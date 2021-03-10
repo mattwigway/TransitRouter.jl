@@ -1,4 +1,8 @@
 include("Service.jl")
 include("Stop.jl")
 include("TripPattern.jl")
+include("Route.jl")
+include("StopTime.jl")
+include("Transfer.jl")
+include("Trip.jl")
 include("TransitNetwork.jl")

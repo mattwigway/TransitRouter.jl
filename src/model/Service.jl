@@ -9,6 +9,9 @@ struct Service
     friday::Bool
     saturday::Bool
     sunday::Bool
+    start_date::Date
+    end_date::Date
     added_dates::Array{Date}
     removed_dates::Array{Date}
 end
+

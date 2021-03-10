@@ -1,4 +1,7 @@
-push!(LOAD_PATH, pwd())  # TODO should be relative to soource file not working
-using TransitRouter
+include("src/TransitRouter.jl")
 
-build(ARGS...)
+using .TransitRouter
+
+netname, gtfs = Iterators.peel(ARGS)
+network = build(gtfs...)
+save_network(network, netname)
