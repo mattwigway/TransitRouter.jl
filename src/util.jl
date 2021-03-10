@@ -22,6 +22,10 @@ function parse_gtfstime(gtfs_time::String)::Int32
     return parse(Int32, h) * 3600 + parse(Int32, m) * 60 + parse(Int32, s)
 end
 
+function parse_gtfstime(gtfs_time::Missing)::Int32
+    return INT_MISSING
+end
+
 # TODO UNIT TESTS
 function meters_to_degrees_lat(meters::Real)::Float64
     return meters / EARTH_CIRCUMFERENCE_METERS * 360

@@ -4,11 +4,16 @@ using CSV
 using DataFrames
 using Logging
 using Tables
+using Dates
 
 const TRANSFER_DISTANCE_METERS = 2000
 
+function strip_colnames!(df)
+    rename!(strip, df)
+end
+
 # refactor needed - split all of these load methods for individual files out into functions
-function build(gtfs_filenames...)::TransitNetwork
+function build_network(gtfs_filenames...)::TransitNetwork
     # initialize a new, empty transit network
     net::TransitNetwork = TransitNetwork()
 
@@ -26,6 +31,7 @@ function build(gtfs_filenames...)::TransitNetwork
 
         @info "..stops.txt"
         stop_df = DataFrame(CSV.File(read(filename_map["stops.txt"])))
+        strip_colnames!(stop_df)
         nstops = nrow(stop_df)
 
         # pre-allocate space for the new stops TODO can I sizehint a dict?
@@ -46,6 +52,7 @@ function build(gtfs_filenames...)::TransitNetwork
 
         @info "..routes.txt"
         route_df = DataFrame(CSV.File(read(filename_map["routes.txt"])))
+        strip_colnames!(route_df)
         nroutes = nrow(route_df)
 
         sizehint!(net.routes, length(net.routes) + nroutes)
@@ -62,6 +69,7 @@ function build(gtfs_filenames...)::TransitNetwork
             @info "..calendar.txt"
 
             cal_df = DataFrame(CSV.File(read(filename_map["calendar.txt"])))
+            strip_colnames!(cal_df)
             ncals = nrow(cal_df)
 
             sizehint!(net.services, length(net.services) + ncals)
@@ -94,6 +102,7 @@ function build(gtfs_filenames...)::TransitNetwork
             @info "..calendar_dates.txt"
 
             cal_df = DataFrame(CSV.File(read(filename_map["calendar_dates.txt"])))
+            strip_colnames!(cal_df)
             ncals = nrow(cal_df)
 
             for crow in Tables.rows(cal_df)
@@ -135,6 +144,7 @@ function build(gtfs_filenames...)::TransitNetwork
 
         @info "..trips.txt"
         trip_df = DataFrame(CSV.File(filename_map["trips.txt"]))
+        strip_colnames!(trip_df)
         ntrips = nrow(trip_df)
 
         sizehint!(net.trips, length(net.trips) + ntrips)
@@ -151,7 +161,8 @@ function build(gtfs_filenames...)::TransitNetwork
 
         @info "..stop_times.txt"
 
-        st_df = DataFrame(CSV.File(filename_map["stop_times.txt"]))
+        st_df = DataFrame(CSV.File(filename_map["stop_times.txt"], typemap=Dict(Dates.Time=>String)))
+        strip_colnames!(st_df)
         nst = nrow(st_df)
 
         for strow in Tables.rows(st_df)
@@ -179,14 +190,18 @@ function build(gtfs_filenames...)::TransitNetwork
     sort_stoptimes!(net)
     @info "Done sorting stop times"
 
-    @info "Finding trip patterns"
+    @info "Interpolating stop times..."
+    interpolate_stoptimes!(net)
+    @info "Done interpolating stop times"
+
+    @info "Finding trip patterns..."
     find_trip_patterns!(net)
     @info "Done finding trip patterns" 
 
     @info "Finding transfers within $(TRANSFER_DISTANCE_METERS)m crow-flies distance..."
     find_transfers_distance!(net, TRANSFER_DISTANCE_METERS)
 
-    @info "Indexing patterns"
+    @info "Indexing patterns..."
     index_network!(net)
     
     @info "Network build completed."

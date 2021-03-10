@@ -165,6 +165,80 @@ function index_network!(net::TransitNetwork)
     end
 end
 
+function _interpolate_segment_times(net::TransitNetwork, stop_times::Vector{StopTime})::Vector{StopTime}
+    first_time = stop_times[1].departure_time
+    last_time = stop_times[length(stop_times)].arrival_time
+    
+    distances = Vector{Float64}()
+    sizehint!(distances, length(stop_times) - 1)
+
+    for i in 1:(length(stop_times) - 1)
+        fr = net.stops[stop_times[i].stop]
+        to = net.stops[stop_times[i + 1].stop]
+        push!(distances, distance_meters(
+            fr.stop_lat,
+            fr.stop_lon,
+            to.stop_lat,
+            to.stop_lon
+        ))
+    end
+
+    distfrac = cumsum(distances) ./ sum(distances)
+
+    timedelta = last_time - first_time
+
+    new_stop_times = Vector{StopTime}()
+    sizehint!(new_stop_times, length(stop_times))
+    push!(new_stop_times, stop_times[1])
+
+    for i in 2:(length(stop_times) - 1)
+        interp_time::Int32 = first_time + round(distfrac[i - 1] * timedelta)
+        push!(new_stop_times, StopTime(
+            stop_times[i].stop,
+            stop_times[i].stop_sequence,
+            interp_time,
+            interp_time
+        ))
+    end
+
+    push!(new_stop_times, stop_times[length(stop_times)])
+
+    @assert length(stop_times) == length(new_stop_times)
+
+    return new_stop_times
+end
+
+function interpolate_stoptimes!(net::TransitNetwork)
+    for trip in net.trips
+        last_bona_fide_stidx = 0
+        # collect should avoid concurrent modification issues
+        for (i, st) in collect(enumerate(trip.stop_times))
+            is_bona_fide_stidx = false
+            if (st.arrival_time == INT_MISSING && st.departure_time != INT_MISSING)
+                st.arrival_time = st.departure_time
+                is_bona_fide_stidx = true
+            elseif (st.departure_time == INT_MISSING && st.arrival_time != INT_MISSING)
+                st.departure_time = st.arrival_time
+                is_bona_fide_stidx = true
+            elseif (st.departure_time != INT_MISSING && st.arrival_time != INT_MISSING)
+                # do nothing, continue to accumulate
+                is_bona_fide_stidx = true
+            end
+
+            if is_bona_fide_stidx
+                if last_bona_fide_stidx != i - 1
+                    trip.stop_times[last_bona_fide_stidx:i] = _interpolate_segment_times(net, trip.stop_times[last_bona_fide_stidx:i])
+                end
+                last_bona_fide_stidx = i
+            end
+        end
+
+        # check our work
+        @assert all(diff(map(st -> st.arrival_time, trip.stop_times)) .>= 0)
+        @assert all(diff(map(st -> st.departure_time, trip.stop_times)) .>= 0)
+    end
+end
+
 function save_network(network::TransitNetwork, filename::String)
     serialize(filename, network)
 end
