@@ -51,7 +51,7 @@ function build_network(gtfs_filenames...)::TransitNetwork
         @info "...Read $nstops stops"
 
         @info "..routes.txt"
-        route_df = DataFrame(CSV.File(read(filename_map["routes.txt"])))
+        route_df = DataFrame(CSV.File(read(filename_map["routes.txt"]); types=Dict(:route_short_name => String, :route_long_name => String)))
         strip_colnames!(route_df)
         nroutes = nrow(route_df)
 
