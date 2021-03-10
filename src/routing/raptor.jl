@@ -146,7 +146,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
         #@info "round $round found $(length(touched_stops)) stops accessible by transit"
 
         # clear prev_touched_stops and reuse as next_touched_stops, avoid allocation
-        empty_no_resize!(prev_touched_stops)
+        empty!(prev_touched_stops)
         next_touched_stops = prev_touched_stops
 
         # do transfers
@@ -171,7 +171,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
 
         # prepare for next iteration
         prev_touched_stops = next_touched_stops
-        empty_no_resize!(touched_stops)
+        empty!(touched_stops)
     end
 end
 
