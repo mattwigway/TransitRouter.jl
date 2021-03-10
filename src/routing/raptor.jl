@@ -29,6 +29,12 @@ struct RaptorResult
     prev_travtime::Array{Int32, 2}
 end
 
+function empty_no_resize!(s::BitSet)
+    for set_bit in s
+        delete!(s, set_bit)
+    end
+end
+
 function raptor(net::TransitNetwork, req::RaptorRequest)
     nstops = length(net.stops)
     # * 2 for transfer rounds
@@ -39,15 +45,24 @@ function raptor(net::TransitNetwork, req::RaptorRequest)
     prev_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_route::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_travtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
-    prev_touched_stops::BitSet = BitSet(map(sat -> sat.stop, req.origins))
-    touched_stops::BitSet = BitSet([])
+    # set bit 0 so that offset is forced to zero and there aren't allocations later
+    prev_touched_stops::BitSet = BitSet([0])
+    touched_stops::BitSet = BitSet([0])
     sizehint!(prev_touched_stops, nstops)
     sizehint!(touched_stops, nstops)
+
+    # unset the 0 set bits that were to force offset
+    delete!(prev_touched_stops, 0)
+    delete!(touched_stops, 0)
 
     # initialize times at stops
     for sat in req.origins
         times_at_stops[1, sat.stop] = sat.time
+        push!(prev_touched_stops, sat.stop)
     end
+
+    @assert prev_touched_stops.offset == 0
+    @assert touched_stops.offset == 0
 
     # get which service idxes are running
     services_running = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], req.date), collect(enumerate(net.services)))))
@@ -131,7 +146,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
         #@info "round $round found $(length(touched_stops)) stops accessible by transit"
 
         # clear prev_touched_stops and reuse as next_touched_stops, avoid allocation
-        intersect!(prev_touched_stops, EMPTY_SET::BitSet)
+        empty_no_resize!(prev_touched_stops)
         next_touched_stops = prev_touched_stops
 
         # do transfers
@@ -156,7 +171,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
 
         # prepare for next iteration
         prev_touched_stops = next_touched_stops
-        intersect!(touched_stops, EMPTY_SET)
+        empty_no_resize!(touched_stops)
     end
 end
 

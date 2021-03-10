@@ -100,7 +100,7 @@ function find_trip_patterns!(net::TransitNetwork)
     end
 
     # clear the entire trips array
-    deleteat!(net.trips, fill(true, length(net.trips)))
+    empty!(net.trips)
     append!(net.trips, trips_with_patterns)
 
     @info "created $(length(net.patterns)) trip patterns"
