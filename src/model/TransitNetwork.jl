@@ -17,6 +17,10 @@ struct TransitNetwork
     
     # todo could this have less indirection?
     transfers::Vector{Vector{Transfer}}
+
+    # NB could also put this inside stop and pattern structs, but would prevent stop packing
+    patterns_for_stop::Vector{Vector{Int64}}
+    trips_for_pattern::Vector{Vector{Int64}}
 end
 
 TransitNetwork() = TransitNetwork(
@@ -29,7 +33,9 @@ TransitNetwork() = TransitNetwork(
     Vector{Trip}(),
     Dict{String,Int64}(),
     Vector{TripPattern}(),
-    Vector{Vector{Transfer}}()
+    Vector{Vector{Transfer}}(),
+    Vector{Vector{Int64}}(),
+    Vector{Vector{Int64}}()
     )
 
 # ensure that stop times are ordered by stop stop_sequence in each trip
@@ -135,6 +141,34 @@ function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real
     @info "Created $total_transfers from $(length(net.stops)) stops"
 end
 
+function index_network!(net::TransitNetwork)
+    # first, patterns for stops
+    sizehint!(net.patterns_for_stop, length(net.stops))
+    for stop in net.stops
+        push!(net.patterns_for_stop, Vector{Int64}())
+    end
+
+    for (i, pattern) in enumerate(net.patterns)
+        for stop in pattern.stops
+            push!(net.patterns_for_stop[stop], i)
+        end
+    end
+
+    # now, trips for pattern
+    sizehint!(net.trips_for_pattern, length(net.patterns))
+    for pattern in net.patterns
+        push!(net.trips_for_pattern, Vector{Int64}())
+    end
+
+    for (i, trip) in enumerate(net.trips)
+        push!(net.trips_for_pattern[trip.pattern], i)
+    end
+end
+
 function save_network(network::TransitNetwork, filename::String)
     serialize(filename, network)
+end
+
+function load_network(filename::String)::TransitNetwork
+    return deserialize(filename)
 end

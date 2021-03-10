@@ -15,3 +15,26 @@ struct Service
     removed_dates::Array{Date}
 end
 
+function is_service_running(service::Service, date::Date)::Bool
+    # first check calendar_dates
+    if any(service.added_dates .== date)
+        return true
+    elseif any(service.removed_dates .== date)
+        return false
+    else
+        dow = Dates.dayofweek(date)
+        # first check calendar
+        return (
+            date >= service.start_date &&
+            date <= service.end_date && (
+                (dow == 1 && service.monday) ||
+                (dow == 2 && service.tuesday) ||
+                (dow == 3 && service.wednesday) ||
+                (dow == 4 && service.thursday) ||
+                (dow == 5 && service.friday) ||
+                (dow == 6 && service.saturday) ||
+                (dow == 7 && service.sunday)
+            )
+        )
+    end
+end

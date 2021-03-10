@@ -186,5 +186,10 @@ function build(gtfs_filenames...)::TransitNetwork
     @info "Finding transfers within $(TRANSFER_DISTANCE_METERS)m crow-flies distance..."
     find_transfers_distance!(net, TRANSFER_DISTANCE_METERS)
 
+    @info "Indexing patterns"
+    index_network!(net)
+    
+    @info "Network build completed."
+
     return net
 end
