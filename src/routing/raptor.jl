@@ -23,7 +23,7 @@ struct RaptorRequest
 end
 
 struct RaptorResult
-    times_at_stops_each_iteration::Array{Int32, 2}
+    times_at_stops_each_round::Array{Int32, 2}
     prev_stop::Array{Int64, 2}
     prev_route::Array{Int64, 2}
     prev_travtime::Array{Int32, 2}
@@ -69,7 +69,8 @@ function raptor(net::TransitNetwork, req::RaptorRequest)
 
     @info "$(length(services_running)) services running on requested date"
 
-    # this should have no allocations
+    # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
+    # a bounded bitset implementation that did not dynamically resize.
     @time run_raptor!(net, times_at_stops, prev_stop, prev_route, prev_travtime, req, services_running, prev_touched_stops, touched_stops)
 
     return RaptorResult(

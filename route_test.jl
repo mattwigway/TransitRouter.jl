@@ -23,7 +23,7 @@ raptor_res = raptor(net, raptor_req)
 travel_time_df = DataFrame(
     lat=map(s -> s.stop_lat, net.stops),
     lon=map(s -> s.stop_lon, net.stops),
-    ttime=raptor_res.times_at_stops_each_iteration[9, :] .- 25200
+    ttime=raptor_res.times_at_stops_each_round[9, :] .- 25200
 )
 
 CSV.write(ARGS[2], travel_time_df)
