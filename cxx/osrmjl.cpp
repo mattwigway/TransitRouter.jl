@@ -4,6 +4,7 @@
 #include <osrm/status.hpp>
 #include <osrm/json_container.hpp>
 #include <osrm/osrm.hpp>
+#include <math.h>
 
 #include <cstdlib>
 
