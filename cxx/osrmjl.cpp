@@ -10,6 +10,11 @@
 // set up wrapper functions so we can use ccall in julia to call out to cpp osrm
 // see https://isocpp.org/wiki/faq/mixing-c-and-cpp#overview-mixing-langs
 
+/**
+ * Start up an OSRM Engine, and return an opaque pointer to it (on the Julia side, it can be a Ptr{Any}).
+ * Pass in the path to a built OSRM graph, and the string for whether you are using multi-level Dijkstra (MLD)
+ * or contraction hierarchies (CH)
+ */
 extern "C" struct osrm::OSRM * init_osrm (char * osrm_path, char * algorithm) {
     using namespace osrm;
     EngineConfig config;
@@ -20,11 +25,15 @@ extern "C" struct osrm::OSRM * init_osrm (char * osrm_path, char * algorithm) {
     else if (strcmp(algorithm, "mld") == 0) config.algorithm = EngineConfig::Algorithm::MLD;
     else throw std::runtime_error("algorithm must be 'ch' or 'mld'");
 
-    static osrm::OSRM engn{config};
+    osrm::OSRM * engn = new osrm::OSRM(config);
 
-    return &engn;
+    return engn;
 }
 
+/**
+ * Compute a distance matrix from origins to destinations, using the specified OSRM instance (an opaque Ptr{Any} returned
+ * by init_osrm on the Julia side). Write results into the durations and distances arrays.
+ */
 extern "C" void distance_matrix(struct osrm::OSRM * osrm, size_t n_origins, double * origin_lats, double * origin_lons,
     size_t n_destinations, double * destination_lats, double * destination_lons, double * durations, double * distances) {
     using namespace osrm;
@@ -67,4 +76,9 @@ extern "C" void distance_matrix(struct osrm::OSRM * osrm, size_t n_origins, doub
     }
 }
 
-// todo shutdown osrm! memory leak!
+/**
+ * Shut down an OSRM engine when it is no longer needed.
+ */
+extern "C" void stop_osrm (struct osrm::OSRM * engn) {
+    delete engn;
+}

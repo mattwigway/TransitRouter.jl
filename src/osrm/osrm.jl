@@ -40,6 +40,10 @@ function distance_matrix(osrm::Ptr{Any}, origins::Vector{Coordinate}, destinatio
     return (durations=durations, distances=distances)
 end
 
-export start_osrm, distance_matrix, Coordinate
+function stop_osrm!(osrm::Ptr{Any})
+    @ccall osrmjl.stop_osrm(osrm::Ptr{Any})::Cvoid
+end
+
+export start_osrm, distance_matrix, stop_osrm!, Coordinate
 
 end
