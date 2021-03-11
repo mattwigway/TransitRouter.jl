@@ -34,7 +34,7 @@ extern "C" struct osrm::OSRM * init_osrm (char * osrm_path, char * algorithm) {
  * Compute a distance matrix from origins to destinations, using the specified OSRM instance (an opaque Ptr{Any} returned
  * by init_osrm on the Julia side). Write results into the durations and distances arrays.
  */
-extern "C" void distance_matrix(struct osrm::OSRM * osrm, size_t n_origins, double * origin_lats, double * origin_lons,
+extern "C" int distance_matrix(struct osrm::OSRM * osrm, size_t n_origins, double * origin_lats, double * origin_lons,
     size_t n_destinations, double * destination_lats, double * destination_lons, double * durations, double * distances) {
     using namespace osrm;
 
@@ -56,7 +56,7 @@ extern "C" void distance_matrix(struct osrm::OSRM * osrm, size_t n_origins, doub
 
     Status stat = osrm->Table(params, result);
 
-    if (stat != Status::Ok) throw std::runtime_error("osrm failed!");
+    if (stat != Status::Ok) return -1;
 
     auto &json_result = result.get<json::Object>();
 
@@ -69,11 +69,19 @@ extern "C" void distance_matrix(struct osrm::OSRM * osrm, size_t n_origins, doub
     for (size_t destination = 0; destination < n_destinations; destination++) {
         for (size_t origin = 0; origin < n_origins; origin++) {
             // julia arrays: col-major order
-            size_t off = destination * n_origins + origin;
-            durations[off] = double(jdurations.at(origin).get<json::Array>().values.at(destination).get<json::Number>().value);
-            distances[off] = double(jdistances.at(origin).get<json::Array>().values.at(destination).get<json::Number>().value);
+            const size_t off = destination * n_origins + origin;
+
+            const auto duration = jdurations.at(origin).get<json::Array>().values.at(destination);
+            if (duration.is<json::Null>()) durations[off] = NAN;
+            else durations[off] = double(duration.get<json::Number>().value);
+
+            const auto distance = jdistances.at(origin).get<json::Array>().values.at(destination);
+            if (distance.is<json::Null>()) distances[off] = NAN;
+            else distances[off] = double(distance.get<json::Number>().value);
         }
     }
+
+    return 0;
 }
 
 /**

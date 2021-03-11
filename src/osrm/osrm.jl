@@ -53,7 +53,7 @@ function distance_matrix(osrm::OSRMInstance, origins::Vector{Coordinate}, destin
     durations::Array{Float64, 2} = fill(-1.0, (n_origins, n_destinations))::Array{Float64, 2}
     distances::Array{Float64, 2} = fill(-1.0, (n_origins, n_destinations))::Array{Float64, 2}
 
-    @ccall osrmjl.distance_matrix(
+    stat = @ccall osrmjl.distance_matrix(
         osrm._engine::Ptr{Any},
         n_origins::Csize_t,
         origin_lats::Ptr{Float64},
@@ -63,7 +63,11 @@ function distance_matrix(osrm::OSRMInstance, origins::Vector{Coordinate}, destin
         destination_lons::Ptr{Float64},
         durations::Ptr{Float64},
         distances::Ptr{Float64}
-    )::Cvoid
+    )::Cint
+
+    if (stat != 0)
+        error("osrm failed, status $stat")
+    end
 
     return (durations=durations, distances=distances)
 end
