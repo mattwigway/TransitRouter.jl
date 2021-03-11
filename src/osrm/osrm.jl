@@ -1,7 +1,15 @@
-# functions to call out to OSRM
+# functions to call out to OSRM. See osrmjl.cpp for the C++ side.
+# Since Julia can only call plain C functions, not C++, we have a thin C++ wrapper with
+# extern "C" functions to allocate a new OSRM engine, compute a distance matrix, and destroy
+# the OSRM engine when you're done with it.
+
+# To use the OSRM module, libosrmjl.so (or libosrmjl.dylib on macOS) must be in your LD_LIBRARY_PATH,
+# which likely means you have to build it first, and may need to build OSRM as well. To build libosrmjl,
+# run cmake .. && cmake --build . in the cxx/build directory, and put the resulting shared object file somewhere.
+# You may need to build OSRM from source so you have the requisitie libraries available. osrm-backend from Homebrew
+# is not compatible with Boost from Homebrew.
 
 module OSRM
-
 
 struct Coordinate
     latitude::Float64
@@ -10,6 +18,8 @@ end
 
 const osrmjl = "libosrmjl"
 
+# Start OSRM, with the file path to an already built OSRM graph, and an algorithm
+# specification which is mld for multi-level Dijkstra, and CH for contraction hierarchies.
 function start_osrm(file_path::String, algorithm::String)::Ptr{Any}
     return @ccall osrmjl.init_osrm(file_path::Cstring, algorithm::Cstring)::Ptr{Any}
 end
