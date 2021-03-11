@@ -5,6 +5,7 @@ using DataFrames
 using Logging
 using Tables
 using Dates
+using .OSRM
 
 const TRANSFER_DISTANCE_METERS = 2000
 
@@ -13,7 +14,7 @@ function strip_colnames!(df)
 end
 
 # refactor needed - split all of these load methods for individual files out into functions
-function build_network(gtfs_filenames...)::TransitNetwork
+function build_network(gtfs_filenames::Vector{String}, transfers_osrm_path::Union{String, Missing}=missing)::TransitNetwork
     # initialize a new, empty transit network
     net::TransitNetwork = TransitNetwork()
 
