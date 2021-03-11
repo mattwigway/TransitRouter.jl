@@ -1,4 +1,6 @@
 using Serialization
+using .OSRM
+using ProgressBars
 
 struct TransitNetwork
     stops::Vector{Stop}
@@ -108,6 +110,7 @@ end
 
 # find transfers based on crow-flies distance
 function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real)
+    empty!(net.transfers)
     total_transfers = 0
     sizehint!(net.transfers, length(net.stops))
     for stop in net.stops
@@ -138,7 +141,51 @@ function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real
 
     @assert length(net.transfers) == length(net.stops)
 
-    @info "Created $total_transfers from $(length(net.stops)) stops"
+    @info "Created $total_transfers transfers from $(length(net.stops)) stops"
+end
+
+# Find transfers through the street network using OSRM
+function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_distance_meters::Real)
+    empty!(net.transfers)
+    total_transfers = 0
+    sizehint!(net.transfers, length(net.stops))
+    for stop in ProgressBar(net.stops)
+        # find nearby stops
+        # could use a spatial index if this is slow
+        lat_diff = meters_to_degrees_lat(max_distance_meters)
+        lon_diff = meters_to_degrees_lon(max_distance_meters, stop.stop_lat)
+
+        # bbox query for nearby stops
+        candidate_stops = collect(filter(t -> (
+            (t[2].stop_lat > stop.stop_lat - lat_diff) &&
+            (t[2].stop_lat < stop.stop_lat + lat_diff) &&
+            (t[2].stop_lon > stop.stop_lon - lon_diff) &&
+            (t[2].stop_lon < stop.stop_lon + lon_diff) &&
+            (t[2] !== stop)
+            ), collect(enumerate(net.stops))))
+
+        # destinations has same order as candidate_stops
+        destinations = collect(map(s -> Coordinate(s[2].stop_lat, s[2].stop_lon), candidate_stops))
+
+        dmat = distance_matrix(osrm, [Coordinate(stop.stop_lat, stop.stop_lon)], destinations)
+
+        xfers = Vector{Transfer}()
+
+        for dest_idx in 1:length(destinations)
+            # convert the index in destinations back to the index in net.stops
+            stop_idx = candidate_stops[dest_idx][1]
+            netdist = dmat.distances[1, dest_idx]
+            if netdist < max_distance_meters
+                push!(xfers, Transfer(stop_idx, netdist))
+            end
+        end
+
+        total_transfers += length(xfers)
+        push!(net.transfers, xfers)
+    end
+
+    @assert length(net.transfers) == length(net.stops)
+    @info "Created $total_transfers transfers from $(length(net.stops)) stops"
 end
 
 function index_network!(net::TransitNetwork)
