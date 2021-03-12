@@ -26,7 +26,7 @@ struct RaptorResult
     times_at_stops_each_round::Array{Int32, 2}
     prev_stop::Array{Int64, 2}
     prev_route::Array{Int64, 2}
-    prev_travtime::Array{Int32, 2}
+    prev_boardtime::Array{Int32, 2}
 end
 
 function empty_no_resize!(s::BitSet)
@@ -37,14 +37,14 @@ end
 
 function raptor(net::TransitNetwork, req::RaptorRequest)
     nstops = length(net.stops)
-    # * 2 for transfer rounds
-    nrounds = req.max_rides * 2 + 1
+    # * 2 for transfer rounds, + 1 for origin times, -1 for skipped final transfer round
+    nrounds = req.max_rides * 2 + 1 - 1
 
     # these get allocated here, and the core RAPTOR algorithm should have 0 allocations
     times_at_stops::Array{Int32,2} = fill(MAX_TIME, (nrounds, nstops))
     prev_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_route::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
-    prev_travtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
+    prev_boardtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
     # set bit 0 so that offset is forced to zero and there aren't allocations later
     prev_touched_stops::BitSet = BitSet([0])
     touched_stops::BitSet = BitSet([0])
@@ -71,18 +71,18 @@ function raptor(net::TransitNetwork, req::RaptorRequest)
 
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
     # a bounded bitset implementation that did not dynamically resize.
-    @time run_raptor!(net, times_at_stops, prev_stop, prev_route, prev_travtime, req, services_running, prev_touched_stops, touched_stops)
+    @time run_raptor!(net, times_at_stops, prev_stop, prev_route, prev_boardtime, req, services_running, prev_touched_stops, touched_stops)
 
     return RaptorResult(
         times_at_stops,
         prev_stop,
         prev_route,
-        prev_travtime
+        prev_boardtime
     )
 end
 
 function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_stop::Array{Int64, 2},
-    prev_route::Array{Int64, 2}, prev_travtime::Array{Int32, 2}, req::RaptorRequest, services_running::BitSet, prev_touched_stops::BitSet, touched_stops::BitSet)
+    prev_route::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, req::RaptorRequest, services_running::BitSet, prev_touched_stops::BitSet, touched_stops::BitSet)
     for round in 1:req.max_rides
         # where the results of this round will be recorded
         target = round * 2
@@ -137,7 +137,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
                         times_at_stops[target, stop_time.stop] = stop_time.arrival_time
                         prev_stop[target, stop_time.stop] = stop
                         prev_route[target, stop_time.stop] = best_trip.route
-                        prev_travtime[target, stop_time.stop] = stop_time.arrival_time - best_trip.stop_times[stoppos].departure_time
+                        prev_boardtime[target, stop_time.stop] = best_trip.stop_times[stoppos].departure_time
                         push!(touched_stops, stop_time.stop)
                     end
                 end
@@ -150,22 +150,25 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
         empty!(prev_touched_stops)
         next_touched_stops = prev_touched_stops
 
-        # do transfers
-        times_at_stops[target + 1, :] = times_at_stops[target, :]
-        # leave other things missing if there were no transfers
-        for stop in touched_stops
-            push!(next_touched_stops, stop)  # this stop was touched by this round
+        # do transfers, but skip after last iteration
+        if round < req.max_rides
+            times_at_stops[target + 1, :] = times_at_stops[target, :]
+            # leave other things missing if there were no transfers
+            for stop in touched_stops
+                push!(next_touched_stops, stop)  # this stop was touched by this round
 
-            for xfer in net.transfers[stop]
-                xfer_walk_time = Base.round(xfer.distance_meters / req.walk_speed_meters_per_second)
-                time_after_xfer = times_at_stops[target, stop] + xfer_walk_time
-                if time_after_xfer < times_at_stops[target + 1, xfer.target_stop]
-                    # transferring to this stop is optimal!
-                    times_at_stops[target + 1, xfer.target_stop] = time_after_xfer
-                    prev_stop[target + 1, xfer.target_stop] = stop
-                    prev_route[target + 1, xfer.target_stop] = XFER_ROUTE
-                    prev_travtime[target + 1, stop] = xfer_walk_time
-                    push!(next_touched_stops, xfer.target_stop)
+                for xfer in net.transfers[stop]
+                    xfer_walk_time = Base.round(xfer.distance_meters / req.walk_speed_meters_per_second)
+                    pre_xfer_time = times_at_stops[target, stop]
+                    time_after_xfer = pre_xfer_time + xfer_walk_time
+                    if time_after_xfer < times_at_stops[target + 1, xfer.target_stop]
+                        # transferring to this stop is optimal!
+                        times_at_stops[target + 1, xfer.target_stop] = time_after_xfer
+                        prev_stop[target + 1, xfer.target_stop] = stop
+                        prev_route[target + 1, xfer.target_stop] = XFER_ROUTE
+                        prev_boardtime[target + 1, stop] = pre_xfer_time
+                        push!(next_touched_stops, xfer.target_stop)
+                    end
                 end
             end
         end

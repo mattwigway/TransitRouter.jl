@@ -5,6 +5,7 @@ using DataFrames
 using Logging
 using Tables
 using Dates
+using .OSRM
 
 const TRANSFER_DISTANCE_METERS = 2000
 
@@ -13,7 +14,7 @@ function strip_colnames!(df)
 end
 
 # refactor needed - split all of these load methods for individual files out into functions
-function build_network(gtfs_filenames...)::TransitNetwork
+function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance, Missing}=missing)::TransitNetwork
     # initialize a new, empty transit network
     net::TransitNetwork = TransitNetwork()
 
@@ -198,8 +199,13 @@ function build_network(gtfs_filenames...)::TransitNetwork
     find_trip_patterns!(net)
     @info "Done finding trip patterns" 
 
-    @info "Finding transfers within $(TRANSFER_DISTANCE_METERS)m crow-flies distance..."
-    find_transfers_distance!(net, TRANSFER_DISTANCE_METERS)
+    if ismissing(osrm)
+        @info "Finding transfers within $(TRANSFER_DISTANCE_METERS)m crow-flies distance..."
+        find_transfers_distance!(net, TRANSFER_DISTANCE_METERS)
+    else
+        @info "Finding transfers within $(TRANSFER_DISTANCE_METERS)m using network distances"
+        find_transfers_osrm!(net, osrm, TRANSFER_DISTANCE_METERS)
+    end
 
     @info "Indexing patterns..."
     index_network!(net)
