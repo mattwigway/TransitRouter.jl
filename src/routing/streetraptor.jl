@@ -27,6 +27,7 @@ struct StreetRaptorResult
     times_at_destinations::Vector{Int32}
     egress_stop_for_destination::Vector{Int64}
     raptor_result::RaptorResult
+    request::StreetRaptorRequest
 end
 
 # find the egress times from all stops to all destinations, within distance_limit
@@ -113,5 +114,5 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
         end
     end
 
-    return StreetRaptorResult(times_at_destinations, egress_stops, raptor_res)
+    return StreetRaptorResult(times_at_destinations, egress_stops, raptor_res, req)
 end

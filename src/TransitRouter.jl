@@ -10,6 +10,6 @@ import .OSRM
 
 export Service, Stop, TransitNetwork, TripPattern, build_network, save_network, load_network,
     RaptorRequest, StopAndTime, raptor, street_raptor, StreetRaptorRequest, StreetRaptorResult,
-    EgressTimes, find_egress_times
+    EgressTimes, find_egress_times, trace_path
 
 end
