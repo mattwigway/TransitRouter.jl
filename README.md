@@ -19,6 +19,8 @@ network::TransitNetwork = build_network([gtfs_file, ...])
 save_network(network, filename)
 ```
 
+The `--max-transfer-distance` option sets the maximum distance, in meters, that will be allowed for transfer between stops (default 1km).
+
 ### Routing
 
 ```julia
@@ -108,7 +110,8 @@ street_raptor_request = StreetRaptorRequest(
         Date(2018, 01, 08),                  # Date
         2000,                                # Maximum access distance to first boarding, meters
         1.33,                                # Walk speed for transfers, meters/second 
-                                             # (the user is responsible for making this comparable to the speeds in OSRM)
+                                             # (the user is responsible for making this comparable
+                                             #    to the speeds used in OSRM)
         4                                    # Maximum number of transit rides
     )
 )

@@ -6,9 +6,13 @@ using ArgParse
 
 function main()
     parser = ArgParseSettings()
-    @add_arg_table parser begin
+    @add_arg_table! parser begin
         "--osrm-network", "-n"
             help = "path to a .osrm file to use for transfer finding"
+        "--max-transfer-distance", "-t"
+            help = "maximum transfer distance (meters)"
+            arg_type = Float64
+            default = 1000.0
         "output"
             help = "Output file to save network (ends in .trjl)"
             required = true
@@ -27,11 +31,11 @@ function main()
         @info "Starting OSRM to route through the street network"
         # TODO don't hardwire mld
         osrm = start_osrm(parsed_args["osrm-network"]::String, "mld")
-        network = build_network(gtfs, osrm)
+        network = build_network(gtfs, osrm, parsed_args["max-transfer-distance"])
         stop_osrm!(osrm)
         save_network(network, output)
     else
-        network = build_network(gtfs)
+        network = build_network(gtfs, max_transfer_distance_meters=parsed_args["max-transfer-distance"])
         save_network(network, output)
     end
 end
