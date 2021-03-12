@@ -134,5 +134,7 @@ As with a `RaptorResult`, you can run `trace_path(street_raptor_result, destinat
 Transfer distances are precomputed when the network is built. By default they are based on straight-line differences, but by passing a `-n path/to/osrm/network.osrm` option to `build_network.jl`, or calling `build_network()` with a second parameter that is an OSRM object created `start_osrm`, OSRM will be used to compute network distances for transfers.
 
 ## References
+
 Delling, D., Pajor, T., & Werneck, R. (2012). Round-Based Public Transit Routing. http://research.microsoft.com/pubs/156567/raptor_alenex.pdf
+
 Luxen, D., & Vetter, C. (2011). Real-time routing with OpenStreetMap data. Proceedings of the 19th ACM SIGSPATIAL International Conference on Advances in Geographic Information Systems - GIS ’11, 513. https://doi.org/10.1145/2093973.2094062
