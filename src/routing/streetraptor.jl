@@ -7,6 +7,7 @@ using Dates
 struct EgressTime
     dest_idx::Int64
     time_seconds::Int32
+    dist_meters::Int32
 end
 
 struct EgressTimes
@@ -25,7 +26,11 @@ end
 
 struct StreetRaptorResult
     times_at_destinations::Vector{Int32}
+    # how far the egress from the transit stop to the destination was
+    egress_distance_meters::Vector{Union{Int32, Missing}}
     egress_stop_for_destination::Vector{Union{Int64, Missing}}
+    # how far the access distance to a particular stop was in meters
+    access_distances_meters::Dict{Int64, Int32}
     raptor_result::RaptorResult
     request::StreetRaptorRequest
 end
@@ -49,7 +54,7 @@ function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations
                 dist = dists.distances[1, candidate_dest_index]
                 dest_idx = candidate_destinations[candidate_dest_index]
                 if dist <= max_distance_meters
-                    push!(egress_times, EgressTime(dest_idx, convert(Int32, round(time))))
+                    push!(egress_times, EgressTime(dest_idx, round(time), round(dist)))
                 end
             end
         end
@@ -71,6 +76,8 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
 
     access = distance_matrix(access_router, [req.origin], stop_coords[stops_near_origin])
 
+    access_dist_meters = Dict{Int64, Int32}
+
     accessible_stops = Vector{StopAndTime}()
     for stop_near_origin_idx in 1:length(stops_near_origin)
         stop_idx = stops_near_origin[stop_near_origin_idx]
@@ -80,6 +87,7 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
 
         if dist <= req.max_access_distance_meters
             push!(accessible_stops, StopAndTime(stop_idx, round(time)))
+            access_dist_meters[stop_idx] =  round(distance)
         end
     end
 
@@ -102,6 +110,7 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
 
     @info "transit routing complete. adding egress times."
     times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations.destinations))
+    egress_distance_meters::Vector{Union{Int32, Missing}} = fill(missing, length(destinations.destinations))
     egress_stops::Vector{Union{Int64, Missing}} = fill(missing, length(destinations.destinations))
 
     for stopidx in 1:length(net.stops)
@@ -113,10 +122,11 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
                 if time_at_dest < times_at_destinations[egress.dest_idx]
                     times_at_destinations[egress.dest_idx] = time_at_dest
                     egress_stops[egress.dest_idx] = stopidx
+                    egress_distance_meters[egress.dest_idx] = egress.dist_meters
                 end
             end
         end
     end
 
-    return StreetRaptorResult(times_at_destinations, egress_stops, raptor_res, req)
+    return StreetRaptorResult(times_at_destinations, egress_distance_meters, egress_stops, access_dist_meters, raptor_res, req)
 end

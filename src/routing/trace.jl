@@ -5,6 +5,7 @@
 struct Leg
     start_time::Int32
     end_time::Int32
+    distance_meters::Union{Missing, Int32}
     origin_stop::Union{Missing, Int64}
     destination_stop::Union{Missing, Int64}
     type::LegType
@@ -33,11 +34,11 @@ function trace_path(res::RaptorResult, stop::Int64)::Vector{Leg}
             # transfer rounds are round 3, 5, etc.
             # transfers are assumed to start the instant you get off the previous vehicle
             prev_time = res.times_at_stops_each_round[round - 1, prev_stop]
-            leg = Leg(prev_time, time_after_round, prev_stop, current_stop, transfer, missing)
+            leg = Leg(prev_time, time_after_round, missing, prev_stop, current_stop, transfer, missing)
         else
             prev_route = res.prev_route[round, current_stop]
             prev_time = res.prev_boardtime[round, current_stop]
-            leg = Leg(prev_time, time_after_round, prev_stop, current_stop, transit, prev_route)
+            leg = Leg(prev_time, time_after_round, missing, prev_stop, current_stop, transit, prev_route)
         end
 
         push!(legs, leg)
@@ -63,14 +64,16 @@ function trace_path(res::StreetRaptorResult, destination::Int64)::Union{Missing,
         # add the egress
         dest_time = res.times_at_destinations[destination]
         final_stop_arr_time = res.raptor_result.times_at_stops_each_round[size(res.raptor_result.times_at_stops_each_round, 1), dest_stop]
-        egress_leg = Leg(final_stop_arr_time, dest_time, dest_stop, missing, egress, missing)
+        egress_dist_meters = res.egress_distance_meters[destination]
+        egress_leg = Leg(final_stop_arr_time, dest_time, egress_dist_meters, dest_stop, missing, egress, missing)
         push!(legs, egress_leg)
 
         # add the access
         initial_board_stop = legs[1].origin_stop
         # first round is access times
         arrival_time_at_initial_board_stop = res.raptor_result.times_at_stops_each_round[1, initial_board_stop]
-        access_leg = Leg(res.request.departure_time, arrival_time_at_initial_board_stop, missing, initial_board_stop, access, missing)
+        access_dist_meters = res.access_distances_meters[initial_board_stop]
+        access_leg = Leg(res.request.departure_time, arrival_time_at_initial_board_stop, access_dist_meters, missing, initial_board_stop, access, missing)
 
         pushfirst!(legs, access_leg)
 
