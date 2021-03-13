@@ -51,24 +51,29 @@ function trace_path(res::RaptorResult, stop::Int64)::Vector{Leg}
     return legs
 end
 
-function trace_path(res::StreetRaptorResult, destination::Int64)::Vector{Leg}
+function trace_path(res::StreetRaptorResult, destination::Int64)::Union{Missing, Vector{Leg}}
     # get the transit path
     dest_stop = res.egress_stop_for_destination[destination]
-    legs = trace_path(res.raptor_result, dest_stop)
 
-    # add the egress
-    dest_time = res.times_at_destinations[destination]
-    final_stop_arr_time = res.raptor_result.times_at_stops_each_round[size(res.raptor_result.times_at_stops_each_round, 1), dest_stop]
-    egress_leg = Leg(final_stop_arr_time, dest_time, dest_stop, missing, egress, missing)
-    push!(legs, egress_leg)
+    if ismissing(dest_stop)
+        return missing
+    else
+        legs = trace_path(res.raptor_result, dest_stop)
 
-    # add the access
-    initial_board_stop = legs[1].origin_stop
-    # first round is access times
-    arrival_time_at_initial_board_stop = res.raptor_result.times_at_stops_each_round[1, initial_board_stop]
-    access_leg = Leg(res.request.departure_time, arrival_time_at_initial_board_stop, missing, initial_board_stop, access, missing)
+        # add the egress
+        dest_time = res.times_at_destinations[destination]
+        final_stop_arr_time = res.raptor_result.times_at_stops_each_round[size(res.raptor_result.times_at_stops_each_round, 1), dest_stop]
+        egress_leg = Leg(final_stop_arr_time, dest_time, dest_stop, missing, egress, missing)
+        push!(legs, egress_leg)
 
-    pushfirst!(legs, access_leg)
+        # add the access
+        initial_board_stop = legs[1].origin_stop
+        # first round is access times
+        arrival_time_at_initial_board_stop = res.raptor_result.times_at_stops_each_round[1, initial_board_stop]
+        access_leg = Leg(res.request.departure_time, arrival_time_at_initial_board_stop, missing, initial_board_stop, access, missing)
 
-    return legs
+        pushfirst!(legs, access_leg)
+
+        return legs
+    end
 end

@@ -25,17 +25,16 @@ end
 
 struct StreetRaptorResult
     times_at_destinations::Vector{Int32}
-    egress_stop_for_destination::Vector{Int64}
+    egress_stop_for_destination::Vector{Union{Int64, Missing}}
     raptor_result::RaptorResult
     request::StreetRaptorRequest
 end
 
 # find the egress times from all stops to all destinations, within distance_limit
 function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations::Vector{Coordinate}, max_distance_meters::Real)::EgressTimes
-    stop_dest_time = Vector{Vector{EgressTime}}()
-    sizehint!(stop_dest_time, length(net.stops))
+    stop_dest_time = Vector{Vector{EgressTime}}(undef, length(net.stops))
     lat_diff = meters_to_degrees_lat(max_distance_meters)
-    for (i, stop) in ProgressBar(enumerate(net.stops))
+    Threads.@threads for (i, stop) in ProgressBar(collect(enumerate(net.stops)))
         origin = Coordinate(stop.stop_lat, stop.stop_lon)
         # prefilter to just destinations that are nearby
         candidate_destinations = bbox_filter(origin, destinations, max_distance_meters)
@@ -55,7 +54,7 @@ function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations
             end
         end
 
-        push!(stop_dest_time, egress_times)
+        stop_dest_time[i] = egress_times
     end
 
     @assert length(stop_dest_time) == length(net.stops)
@@ -63,7 +62,7 @@ function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations
     return EgressTimes(destinations, stop_dest_time)
 end
 
-function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::StreetRaptorRequest, destinations::EgressTimes)::StreetRaptorResult
+function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::StreetRaptorRequest, destinations::EgressTimes)::Union{StreetRaptorResult, Missing}
     @info "performing access search"
 
     # find stops near origin
@@ -84,6 +83,11 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
         end
     end
 
+    if length(accessible_stops) == 0
+        # short circuit
+        return missing
+    end
+
     @info "$(length(accessible_stops)) stops found near origin"
     @info "begin transit routing"
 
@@ -98,7 +102,7 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
 
     @info "transit routing complete. adding egress times."
     times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations.destinations))
-    egress_stops::Vector{Int64} = fill(INT_MISSING, length(destinations.destinations))
+    egress_stops::Vector{Union{Int64, Missing}} = fill(missing, length(destinations.destinations))
 
     for stopidx in 1:length(net.stops)
         time_at_stop = raptor_res.times_at_stops_each_round[size(raptor_res.times_at_stops_each_round, 1), stopidx]
