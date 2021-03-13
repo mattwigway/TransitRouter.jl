@@ -87,7 +87,7 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
 
         if dist <= req.max_access_distance_meters
             push!(accessible_stops, StopAndTime(stop_idx, round(time)))
-            access_dist_meters[stop_idx] =  round(distance)
+            access_dist_meters[stop_idx] =  round(dist)
         end
     end
 
