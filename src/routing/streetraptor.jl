@@ -76,7 +76,7 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
 
     access = distance_matrix(access_router, [req.origin], stop_coords[stops_near_origin])
 
-    access_dist_meters = Dict{Int64, Int32}
+    access_dist_meters = Dict{Int64, Int32}()
 
     accessible_stops = Vector{StopAndTime}()
     for stop_near_origin_idx in 1:length(stops_near_origin)
@@ -87,7 +87,7 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
 
         if dist <= req.max_access_distance_meters
             push!(accessible_stops, StopAndTime(stop_idx, round(time)))
-            access_dist_meters[stop_idx] = convert(Int32, round(dist))
+            access_dist_meters[stop_idx] = round(dist)
         end
     end
 
