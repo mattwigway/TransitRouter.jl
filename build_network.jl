@@ -30,7 +30,7 @@ function main()
     if haskey(parsed_args, "osrm-network")
         @info "Starting OSRM to route through the street network"
         # TODO don't hardwire mld
-        osrm = start_osrm(parsed_args["osrm-network"]::String, "mld")
+        osrm = start_osrm(parsed_args["osrm-network"]::String, "ch")
         network = build_network(gtfs, osrm, parsed_args["max-transfer-distance"])
         stop_osrm!(osrm)
         save_network(network, output)
