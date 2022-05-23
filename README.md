@@ -1,6 +1,6 @@
 # TransitRouter.jl
 
-Experimental transit routing in Julia. For now, using the [RAPTOR](http://research.microsoft.com/pubs/156567/raptor_alenex.pdf) algorithm (Delling, Pajor, and Werneck, 2012), though other algorithms could be added in the future. Very much thrown together to meet a deadline, but better comments/documentation are planned.
+Transit routing in Julia. For now, using the [RAPTOR](http://research.microsoft.com/pubs/156567/raptor_alenex.pdf) algorithm (Delling, Pajor, and Werneck, 2012), though other algorithms could be added in the future.
 
 ## Usage
 
