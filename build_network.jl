@@ -1,7 +1,5 @@
-include("src/TransitRouter.jl")
-
-using .TransitRouter
-using .TransitRouter.OSRM
+using TransitRouter
+using TransitRouter.OSRM
 using ArgParse
 
 function main()
@@ -27,11 +25,11 @@ function main()
     gtfs::Vector{String} = convert(Vector{String}, parsed_args["gtfs"])::Vector{String}
     output::String = parsed_args["output"]::String
 
-    if haskey(parsed_args, "osrm-network")
+    if !isnothing(parsed_args["osrm-network"])
         @info "Starting OSRM to route through the street network"
         # TODO don't hardwire mld
         osrm = start_osrm(parsed_args["osrm-network"]::String, "mld")
-        network = build_network(gtfs, osrm, parsed_args["max-transfer-distance"])
+        network = build_network(gtfs, osrm, max_transfer_distance_meters=parsed_args["max-transfer-distance"])
         stop_osrm!(osrm)
         save_network(network, output)
     else
