@@ -12,7 +12,7 @@ function strip_colnames!(df)
 end
 
 # refactor needed - split all of these load methods for individual files out into functions
-function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance, Missing}=missing, max_transfer_distance_meters::Float64=1000.0)::TransitNetwork
+function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance, Missing}=missing; max_transfer_distance_meters::Float64=1000.0)::TransitNetwork
     # initialize a new, empty transit network
     net::TransitNetwork = TransitNetwork()
 
@@ -181,6 +181,8 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         if haskey(filename_map, "frequencies.txt")
             @warn "frequencies.txt present but not yet supported - frequency trips will run once at the time they are scheduled in stop times (often midnight)"
         end
+
+        close(r)
     end
 
     @info "Loaded all GTFS files"
