@@ -93,6 +93,9 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
         # where the results of this round will be recorded
         target = round * 2
 
+        # preinitialize times with times from previous round
+        times_at_stops[target, :] = times_at_stops[target - 1, :]
+
         for stop in prev_touched_stops
             # find all patterns that touch this stop
             for patidx in net.patterns_for_stop[stop]
