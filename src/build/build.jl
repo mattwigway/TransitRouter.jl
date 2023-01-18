@@ -1,11 +1,4 @@
 # Build a network from a GTFS file name
-using ZipFile
-using CSV
-using DataFrames
-using Logging
-using Tables
-using Dates
-using .OSRM
 
 function strip_colnames!(df)
     rename!(strip, df)

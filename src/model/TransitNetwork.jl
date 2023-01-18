@@ -1,7 +1,3 @@
-using Serialization
-using .OSRM
-using ProgressBars
-
 struct TransitNetwork
     stops::Vector{Stop}
     stopidx_for_id::Dict{String,Int64}
@@ -165,9 +161,9 @@ function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_dista
             ), collect(enumerate(net.stops))))
 
         # destinations has same order as candidate_stops
-        destinations = collect(map(s -> Coordinate(s[2].stop_lat, s[2].stop_lon), candidate_stops))
+        destinations = collect(map(s -> LatLon{Float64}(s[2].stop_lat, s[2].stop_lon), candidate_stops))
 
-        dmat = distance_matrix(osrm, [Coordinate(stop.stop_lat, stop.stop_lon)], destinations)
+        dmat = distance_matrix(osrm, [LatLon{Float64}(stop.stop_lat, stop.stop_lon)], destinations)
 
         xfers = Vector{Transfer}()
 

@@ -1,8 +1,6 @@
 # RAPTOR: Round-Based Public Transit Optimized Routing
 # Described in Delling, D., Pajor, T., & Werneck, R. (2012). Round-Based Public Transit Routing. http://research.microsoft.com/pubs/156567/raptor_alenex.pdf
 
-using Dates
-
 const MAX_TIME = 2147483646
 const XFER_ROUTE = -1
 const INT_MISSING = -2

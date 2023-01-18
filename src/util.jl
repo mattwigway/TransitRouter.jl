@@ -1,5 +1,3 @@
-using Dates
-
 # mean equatorial circumference, https://en.wikipedia.org/wiki/Earth
 const EARTH_CIRCUMFERENCE_METERS = 40_075_017
 
@@ -46,15 +44,15 @@ function distance_meters(lat1::Real, lon1::Real, lat2::Real, lon2::Real)::Float6
 end
 
 # return the indices into destinations that are within the bbox continaing radius_meters around the origin
-function bbox_filter(origin::Coordinate, destinations::Vector{Coordinate}, max_dist_meters::Real)::Vector{Int64}
+function bbox_filter(origin::LatLon{T}, destinations::Vector{LatLon{T}}, max_dist_meters::Real)::Vector{Int64} where T <: Real
     max_lat_diff = meters_to_degrees_lat(max_dist_meters)
     max_lon_diff = meters_to_degrees_lon(max_dist_meters, origin.latitude)
 
     candidate_dests = filter(collect(enumerate(destinations))) do t
         idx, dest = t
         return (
-            abs(origin.latitude - dest.latitude) < max_lat_diff &&
-            abs(origin.longitude - dest.longitude) < max_lon_diff
+            abs(origin.lat - dest.lat) < max_lat_diff &&
+            abs(origin.lon - dest.lon) < max_lon_diff
         )
     end
 

@@ -1,6 +1,6 @@
 using TransitRouter
-using TransitRouter.OSRM
-using ArgParse
+import ArgParse: parse_args, ArgParseSettings, @add_arg_table!
+import OSRM: OSRMInstance
 
 function main()
     parser = ArgParseSettings()
@@ -28,9 +28,8 @@ function main()
     if !isnothing(parsed_args["osrm-network"])
         @info "Starting OSRM to route through the street network"
         # TODO don't hardwire mld
-        osrm = start_osrm(parsed_args["osrm-network"]::String, "mld")
+        osrm = OSRMInstance(parsed_args["osrm-network"]::String, "mld")
         network = build_network(gtfs, osrm, max_transfer_distance_meters=parsed_args["max-transfer-distance"])
-        stop_osrm!(osrm)
         save_network(network, output)
     else
         network = build_network(gtfs, max_transfer_distance_meters=parsed_args["max-transfer-distance"])

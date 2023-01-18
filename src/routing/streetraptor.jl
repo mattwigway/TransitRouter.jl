@@ -1,21 +1,17 @@
 # StreetRaptor combines RAPTOR with a street search from a geographic origin to a geographic destination
 
-using .OSRM
-using ProgressBars
-using Dates
-
 struct EgressTime
     dest_idx::Int64
     time_seconds::Int32
 end
 
-struct EgressTimes
-    destinations::Vector{Coordinate}
+struct EgressTimes{T <: Real}
+    destinations::Vector{LatLon{T}}
     stop_dest_time::Vector{Vector{EgressTime}}
 end
 
-struct StreetRaptorRequest
-    origin::Coordinate
+struct StreetRaptorRequest{T <: Real}
+    origin::LatLon{T}
     departure_time::Int32
     date::Date
     max_access_distance_meters::Float64
@@ -23,20 +19,20 @@ struct StreetRaptorRequest
     max_rides::Int64
 end
 
-struct StreetRaptorResult
+struct StreetRaptorResult{T <: Real}
     times_at_destinations::Vector{Int32}
     egress_stop_for_destination::Vector{Int64}
     raptor_result::RaptorResult
-    request::StreetRaptorRequest
+    request::StreetRaptorRequest{T}
 end
 
 # find the egress times from all stops to all destinations, within distance_limit
-function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations::Vector{Coordinate}, max_distance_meters::Real)::EgressTimes
+function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations::Vector{LatLon{T}}, max_distance_meters::Real)::EgressTimes{T} where T
     stop_dest_time = Vector{Vector{EgressTime}}()
     sizehint!(stop_dest_time, length(net.stops))
     lat_diff = meters_to_degrees_lat(max_distance_meters)
     for (i, stop) in ProgressBar(enumerate(net.stops))
-        origin = Coordinate(stop.stop_lat, stop.stop_lon)
+        origin = LatLon{T}(stop.stop_lat, stop.stop_lon)
         # prefilter to just destinations that are nearby
         candidate_destinations = bbox_filter(origin, destinations, max_distance_meters)
         egress_times = Vector{EgressTime}()
@@ -45,7 +41,7 @@ function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations
             destination_coords = destinations[candidate_destinations]
             dists = distance_matrix(osrm, [origin], destination_coords)
 
-            for candidate_dest_index in 1:length(candidate_destinations)
+            for candidate_dest_index in eachindex(candidate_destinations)
                 time = dists.durations[1, candidate_dest_index]
                 dist = dists.distances[1, candidate_dest_index]
                 dest_idx = candidate_destinations[candidate_dest_index]
@@ -67,13 +63,13 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
     @info "performing access search"
 
     # find stops near origin
-    stop_coords = map(s -> Coordinate(s.stop_lat, s.stop_lon), net.stops)
+    stop_coords = map(s -> LatLon{Float64}(s.stop_lat, s.stop_lon), net.stops)
     stops_near_origin = bbox_filter(req.origin, stop_coords, req.max_access_distance_meters)
 
     access = distance_matrix(access_router, [req.origin], stop_coords[stops_near_origin])
 
     accessible_stops = Vector{StopAndTime}()
-    for stop_near_origin_idx in 1:length(stops_near_origin)
+    for stop_near_origin_idx in eachindex(stops_near_origin)
         stop_idx = stops_near_origin[stop_near_origin_idx]
         # this is the time the stop is reached
         time = req.departure_time + access.durations[1, stop_near_origin_idx]
