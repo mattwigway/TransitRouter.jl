@@ -1,81 +1,39 @@
 # StreetRaptor combines RAPTOR with a street search from a geographic origin to a geographic destination
 
-struct EgressTime
-    dest_idx::Int64
-    time_seconds::Int32
-end
-
-struct EgressTimes{T <: Real}
-    destinations::Vector{LatLon{T}}
-    stop_dest_time::Vector{Vector{EgressTime}}
-end
-
-struct StreetRaptorRequest{T <: Real}
-    origin::LatLon{T}
-    departure_time::Int32
-    date::Date
-    max_access_distance_meters::Float64
-    walk_speed_meters_per_second::Float64
-    max_rides::Int64
-end
-
-struct StreetRaptorResult{T <: Real}
+struct StreetRaptorResult
     times_at_destinations::Vector{Int32}
     egress_stop_for_destination::Vector{Int64}
     raptor_result::RaptorResult
-    request::StreetRaptorRequest{T}
 end
 
-# find the egress times from all stops to all destinations, within distance_limit
-function find_egress_times(net::TransitNetwork, osrm::OSRMInstance, destinations::Vector{LatLon{T}}, max_distance_meters::Real)::EgressTimes{T} where T
-    stop_dest_time = Vector{Vector{EgressTime}}()
-    sizehint!(stop_dest_time, length(net.stops))
-    lat_diff = meters_to_degrees_lat(max_distance_meters)
-    for (i, stop) in ProgressBar(enumerate(net.stops))
-        origin = LatLon{T}(stop.stop_lat, stop.stop_lon)
-        # prefilter to just destinations that are nearby
-        candidate_destinations = bbox_filter(origin, destinations, max_distance_meters)
-        egress_times = Vector{EgressTime}()
-
-        if length(candidate_destinations) > 0
-            destination_coords = destinations[candidate_destinations]
-            dists = distance_matrix(osrm, [origin], destination_coords)
-
-            for candidate_dest_index in eachindex(candidate_destinations)
-                time = dists.durations[1, candidate_dest_index]
-                dist = dists.distances[1, candidate_dest_index]
-                dest_idx = candidate_destinations[candidate_dest_index]
-                if dist <= max_distance_meters
-                    push!(egress_times, EgressTime(dest_idx, convert(Int32, round(time))))
-                end
-            end
-        end
-
-        push!(stop_dest_time, egress_times)
-    end
-
-    @assert length(stop_dest_time) == length(net.stops)
-
-    return EgressTimes(destinations, stop_dest_time)
-end
-
-function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::StreetRaptorRequest, destinations::EgressTimes)::StreetRaptorResult
+function street_raptor(
+    net::TransitNetwork,
+    access_router::OSRMInstance,
+    origin::LatLon{<:Real},
+    destinations::AbstractVector{<:LatLon{<:Real}},
+    departure_date_time::DateTime;
+    max_access_distance_meters=1000.0,
+    max_rides=4,
+    walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND
+    )::StreetRaptorResult
     @info "performing access search"
 
     # find stops near origin
     stop_coords = map(s -> LatLon{Float64}(s.stop_lat, s.stop_lon), net.stops)
-    stops_near_origin = bbox_filter(req.origin, stop_coords, req.max_access_distance_meters)
+    stops_near_origin = bbox_filter(origin, stop_coords, max_access_distance_meters)
 
-    access = distance_matrix(access_router, [req.origin], stop_coords[stops_near_origin])
+    access = distance_matrix(access_router, [origin], stop_coords[stops_near_origin])
+
+    departure_time = time_to_seconds_since_midnight(departure_date_time)
 
     accessible_stops = Vector{StopAndTime}()
     for stop_near_origin_idx in eachindex(stops_near_origin)
         stop_idx = stops_near_origin[stop_near_origin_idx]
         # this is the time the stop is reached
-        time = req.departure_time + access.durations[1, stop_near_origin_idx]
+        time = departure_time + access.durations[1, stop_near_origin_idx]
         dist = access.distances[1, stop_near_origin_idx]
 
-        if dist <= req.max_access_distance_meters
+        if dist <= max_access_distance_meters
             push!(accessible_stops, StopAndTime(stop_idx, round(time)))
         end
     end
@@ -83,32 +41,40 @@ function street_raptor(net::TransitNetwork, access_router::OSRMInstance, req::St
     @info "$(length(accessible_stops)) stops found near origin"
     @info "begin transit routing"
 
-    rreq = RaptorRequest(
-        accessible_stops,
-        req.max_rides,
-        req.date,
-        req.walk_speed_meters_per_second
-    )
-
-    raptor_res = raptor(net, rreq)
+    raptor_res = raptor(net, accessible_stops, Date(departure_date_time);
+        walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
 
     @info "transit routing complete. adding egress times."
-    times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations.destinations))
-    egress_stops::Vector{Int64} = fill(INT_MISSING, length(destinations.destinations))
+    times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations))
+    egress_stops::Vector{Int64} = fill(INT_MISSING, length(destinations))
 
-    for stopidx in 1:length(net.stops)
-        time_at_stop = raptor_res.times_at_stops_each_round[size(raptor_res.times_at_stops_each_round, 1), stopidx]
+    for stopidx in eachindex(net.stops)
+        time_at_stop = raptor_res.times_at_stops_each_round[end, stopidx]
         if time_at_stop < MAX_TIME
-            # this stop was reached
-            for egress in destinations.stop_dest_time[stopidx]
-                time_at_dest = time_at_stop + egress.time_seconds
-                if time_at_dest < times_at_destinations[egress.dest_idx]
-                    times_at_destinations[egress.dest_idx] = time_at_dest
-                    egress_stops[egress.dest_idx] = stopidx
+            for destidx in eachindex(destinations)
+                # check if it's nearby
+                crow_flies_distance_to_dest = euclidean_distance(stop_coords[stopidx], destinations[destidx])
+                if crow_flies_distance_to_dest <= max_access_distance_meters && time_at_stop < times_at_destinations[destidx]
+                    # it's nearby, get network distance. TODO if multiple destinations are close by, could route to all at once
+                    # other condition is optimization - if there's another way to the destination faster than the route to this
+                    # stop, no way it could be optimal way to get to that destination since egress time is nonnegative
+                    routes_to_dest = route(access_router, stop_coords[stopidx], destinations[destidx])
+                    # todo handle not found
+                    # need to check this again, horse-flies distance may be longer than limit even if
+                    if !isempty(routes_to_dest)
+                        route_to_dest = routes_to_dest[1]
+                        if route_to_dest.distance_meters < max_access_distance_meters
+                            time_at_dest = time_at_stop + route_to_dest.duration_seconds / walk_speed_meters_per_second
+                            if time_at_dest < times_at_destinations[destidx]
+                                times_at_destinations[destidx] = round(time_at_dest)
+                                egress_stops[destidx] = stopidx
+                            end
+                        end
+                    end
                 end
             end
         end
     end
 
-    return StreetRaptorResult(times_at_destinations, egress_stops, raptor_res, req)
+    return StreetRaptorResult(times_at_destinations, egress_stops, raptor_res)
 end

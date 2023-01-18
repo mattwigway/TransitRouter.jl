@@ -46,7 +46,7 @@ end
 # return the indices into destinations that are within the bbox continaing radius_meters around the origin
 function bbox_filter(origin::LatLon{T}, destinations::Vector{LatLon{T}}, max_dist_meters::Real)::Vector{Int64} where T <: Real
     max_lat_diff = meters_to_degrees_lat(max_dist_meters)
-    max_lon_diff = meters_to_degrees_lon(max_dist_meters, origin.latitude)
+    max_lon_diff = meters_to_degrees_lon(max_dist_meters, origin.lat)
 
     candidate_dests = filter(collect(enumerate(destinations))) do t
         idx, dest = t
@@ -58,6 +58,9 @@ function bbox_filter(origin::LatLon{T}, destinations::Vector{LatLon{T}}, max_dis
 
     return collect(map(c -> c[1], candidate_dests))
 end
+
+# also works on datetime
+time_to_seconds_since_midnight(time) = Dates.hour(time) * 3600 + Dates.minute(time) * 60 + Dates.second(time)
 
 # primes are used in hashing
 # these are from https://primes.utm.edu/lists/small/1000.txt

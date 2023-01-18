@@ -1,7 +1,7 @@
 module TransitRouter
 
 import Dates
-import Dates: Date
+import Dates: Date, Time, DateTime
 import Serialization: serialize, deserialize
 import ProgressBars: ProgressBar
 import ZipFile
@@ -9,9 +9,10 @@ import CSV
 import DataFrames: DataFrame, rename!, nrow
 import Logging: @info, @warn, @error
 import Tables
-import OSRM: OSRMInstance, distance_matrix
-import Geodesy: LatLon
+import OSRM: OSRMInstance, distance_matrix, route
+import Geodesy: LatLon, euclidean_distance
 
+include("constants.jl")
 include("model/model.jl")
 include("build/build.jl")
 include("util.jl")
