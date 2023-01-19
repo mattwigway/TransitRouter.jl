@@ -50,7 +50,7 @@ function trace_path(res::RaptorResult, stop::Int64)::Vector{Leg}
     return legs
 end
 
-function trace_path(res::StreetRaptorResult, destination::Int64)::Vector{Leg}
+function trace_path(res::StreetRaptorResult, destination::Int64)
     # get the transit path
     dest_stop = res.egress_stop_for_destination[destination]
 
