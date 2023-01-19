@@ -3,6 +3,7 @@ uuid = "f9e57d04-be1f-4339-a529-971801331ddb"
 authors = ["Matthew Wigginton Bhagat-Conway <mwbc@unc.edu>"]
 
 [deps]
+ArchGDAL = "c9ce4bd3-c3d5-55b8-8973-c0e20141b8c3"
 ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
