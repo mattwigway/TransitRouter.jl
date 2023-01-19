@@ -18,9 +18,8 @@ function trace_path(res::RaptorResult, stop::Int64)::Vector{Leg}
     current_stop = stop
     for round in size(res.times_at_stops_each_round, 1):-1:2
         time_after_round = res.times_at_stops_each_round[round, current_stop]
-        time_before_round = res.times_at_stops_each_round[round - 1, current_stop]
 
-        if time_after_round == time_before_round
+        if res.prev_stop[round, current_stop] == INT_MISSING
             # not updated this round
             continue
         end
@@ -66,7 +65,7 @@ function trace_path(res::StreetRaptorResult, destination::Int64)::Vector{Leg}
     initial_board_stop = legs[1].origin_stop
     # first round is access times
     arrival_time_at_initial_board_stop = res.raptor_result.times_at_stops_each_round[1, initial_board_stop]
-    access_leg = Leg(res.request.departure_time, arrival_time_at_initial_board_stop, missing, initial_board_stop, access, missing)
+    access_leg = Leg(time_to_seconds_since_midnight(res.departure_date_time), arrival_time_at_initial_board_stop, missing, initial_board_stop, access, missing)
 
     pushfirst!(legs, access_leg)
 
