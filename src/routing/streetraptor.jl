@@ -19,7 +19,9 @@ function street_raptor(
     max_access_distance_meters=1000.0,
     max_egress_distance_meters=1000.0,
     max_rides=4,
-    walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND
+    walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND,
+    stop_to_destination_distances=nothing,
+    stop_to_destination_durations=nothing
     )::StreetRaptorResult
     @info "performing access search"
 
@@ -58,23 +60,32 @@ function street_raptor(
         time_at_stop = raptor_res.times_at_stops_each_round[end, stopidx]
         if time_at_stop < MAX_TIME
             for destidx in eachindex(destinations)
-                # check if it's nearby
-                crow_flies_distance_to_dest = euclidean_distance(stop_coords[stopidx], destinations[destidx])
-                if crow_flies_distance_to_dest <= max_egress_distance_meters && time_at_stop < times_at_destinations[destidx]
-                    # it's nearby, get network distance. TODO if multiple destinations are close by, could route to all at once
-                    # other condition is optimization - if there's another way to the destination faster than the route to this
-                    # stop, no way it could be optimal way to get to that destination since egress time is nonnegative
-                    routes_to_dest = route(egress_router, stop_coords[stopidx], destinations[destidx])
-                    # todo handle not found
-                    # need to check this again, horse-flies distance may be longer than limit even if
-                    if !isempty(routes_to_dest)
-                        route_to_dest = routes_to_dest[1]
-                        if route_to_dest.distance_meters < max_egress_distance_meters
-                            time_at_dest = time_at_stop + route_to_dest.duration_seconds / walk_speed_meters_per_second
-                            if time_at_dest < times_at_destinations[destidx]
-                                times_at_destinations[destidx] = round(time_at_dest)
-                                egress_stops[destidx] = stopidx
-                                egress_geoms[destidx] = route_to_dest.geometry
+                if !isnothing(stop_to_destination_distances) && !isnothing(stop_to_destination_durations)
+                    if stop_to_destination_distances[stopidx, destidx] > 0 && stop_to_destination_distances[stopidx, destidx] < max_egress_distance_meters
+                        time_at_dest = time_at_stop + round(stop_to_destination_durations[stopidx, destidx])
+                        if time_at_dest < times_at_destinations[destidx]
+                            times_at_destinations[destidx] = round(time_at_dest)
+                            egress_stops[destidx] = stopidx
+                        end
+                    end
+                else
+                    # check if it's nearby
+                    crow_flies_distance_to_dest = euclidean_distance(stop_coords[stopidx], destinations[destidx])
+                    if crow_flies_distance_to_dest <= max_egress_distance_meters && time_at_stop < times_at_destinations[destidx]
+                        # it's nearby, get network distance. TODO if multiple destinations are close by, could route to all at once
+                        # other condition is optimization - if there's another way to the destination faster than the route to this
+                        # stop, no way it could be optimal way to get to that destination since egress time is nonnegative
+                        routes_to_dest = route(egress_router, stop_coords[stopidx], destinations[destidx])
+                        # need to check this again, horse-flies distance may be longer than limit even if
+                        if !isempty(routes_to_dest)
+                            route_to_dest = routes_to_dest[1]
+                            if route_to_dest.distance_meters < max_egress_distance_meters
+                                time_at_dest = time_at_stop + route_to_dest.duration_seconds / walk_speed_meters_per_second
+                                if time_at_dest < times_at_destinations[destidx]
+                                    times_at_destinations[destidx] = round(time_at_dest)
+                                    egress_stops[destidx] = stopidx
+                                    egress_geoms[destidx] = route_to_dest.geometry
+                                end
                             end
                         end
                     end
