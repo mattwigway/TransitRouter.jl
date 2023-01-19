@@ -17,12 +17,12 @@ function trace_path(res::RaptorResult, stop::Int64)::Vector{Leg}
 
     current_stop = stop
     for round in size(res.times_at_stops_each_round, 1):-1:2
-        time_after_round = res.times_at_stops_each_round[round, current_stop]
-
         if res.prev_stop[round, current_stop] == INT_MISSING
             # not updated this round
             continue
         end
+
+        time_after_round = res.times_at_stops_each_round[round, current_stop]
 
         prev_stop = res.prev_stop[round, current_stop]
 
@@ -53,6 +53,11 @@ end
 function trace_path(res::StreetRaptorResult, destination::Int64)::Vector{Leg}
     # get the transit path
     dest_stop = res.egress_stop_for_destination[destination]
+
+    if dest_stop == INT_MISSING
+        return missing
+    end
+
     legs = trace_path(res.raptor_result, dest_stop)
 
     # add the egress
