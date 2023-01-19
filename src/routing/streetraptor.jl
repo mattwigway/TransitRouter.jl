@@ -84,7 +84,7 @@ function street_raptor(
                         if !isempty(routes_to_dest)
                             route_to_dest = routes_to_dest[1]
                             if route_to_dest.distance_meters < max_egress_distance_meters
-                                time_at_dest = time_at_stop + route_to_dest.duration_seconds / walk_speed_meters_per_second
+                                time_at_dest = time_at_stop + route_to_dest.duration_seconds
                                 if time_at_dest < times_at_destinations[destidx]
                                     times_at_destinations[destidx] = round(time_at_dest)
                                     egress_stops[destidx] = stopidx
