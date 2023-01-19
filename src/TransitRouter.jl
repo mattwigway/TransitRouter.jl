@@ -11,6 +11,7 @@ import Logging: @info, @warn, @error
 import Tables
 import OSRM: OSRMInstance, distance_matrix, route
 import Geodesy: LatLon, euclidean_distance
+import ArchGDAL
 
 include("constants.jl")
 include("model/model.jl")
