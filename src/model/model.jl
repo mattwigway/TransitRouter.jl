@@ -1,3 +1,4 @@
+include("Shape.jl")
 include("Service.jl")
 include("Stop.jl")
 include("TripPattern.jl")

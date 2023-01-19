@@ -6,12 +6,13 @@ import Serialization: serialize, deserialize
 import ProgressBars: ProgressBar
 import ZipFile
 import CSV
-import DataFrames: DataFrame, rename!, nrow
+import DataFrames: DataFrame, rename!, nrow, groupby, select!, Not
 import Logging: @info, @warn, @error
 import Tables
 import OSRM: OSRMInstance, distance_matrix, route
 import Geodesy: LatLon, euclidean_distance
 import ArchGDAL
+import LibGEOS
 
 include("constants.jl")
 include("model/model.jl")

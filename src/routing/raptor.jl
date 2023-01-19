@@ -23,7 +23,7 @@ end
 struct RaptorResult
     times_at_stops_each_round::Array{Int32, 2}
     prev_stop::Array{Int64, 2}
-    prev_route::Array{Int64, 2}
+    prev_trip::Array{Int64, 2}
     prev_boardtime::Array{Int32, 2}
 end
 
@@ -48,7 +48,7 @@ function raptor(
     # these get allocated here, and the core RAPTOR algorithm should have 0 allocations
     times_at_stops::Array{Int32,2} = fill(MAX_TIME, (nrounds, nstops))
     prev_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
-    prev_route::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
+    prev_trip::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_boardtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
     # set bit 0 so that offset is forced to zero and there aren't allocations later
     prev_touched_stops::BitSet = BitSet([0])
@@ -76,19 +76,19 @@ function raptor(
 
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
     # a bounded bitset implementation that did not dynamically resize.
-    @time run_raptor!(net, times_at_stops, prev_stop, prev_route, prev_boardtime, walk_speed_meters_per_second,
+    @time run_raptor!(net, times_at_stops, prev_stop, prev_trip, prev_boardtime, walk_speed_meters_per_second,
         max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
 
     return RaptorResult(
         times_at_stops,
         prev_stop,
-        prev_route,
+        prev_trip,
         prev_boardtime
     )
 end
 
 function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_stop::Array{Int64, 2},
-    prev_route::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running::BitSet, prev_touched_stops::BitSet, touched_stops::BitSet)
+    prev_trip::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running::BitSet, prev_touched_stops::BitSet, touched_stops::BitSet)
     for round in 1:max_rides
         # where the results of this round will be recorded
         target = round * 2
@@ -145,7 +145,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
                         # we have found a new fastest way to get to this stop!
                         times_at_stops[target, stop_time.stop] = stop_time.arrival_time
                         prev_stop[target, stop_time.stop] = stop
-                        prev_route[target, stop_time.stop] = best_trip.route
+                        prev_trip[target, stop_time.stop] = best_trip_idx
                         prev_boardtime[target, stop_time.stop] = best_trip.stop_times[stoppos].departure_time
                         push!(touched_stops, stop_time.stop)
                     end
@@ -175,7 +175,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
                             # transferring to this stop is optimal!
                             times_at_stops[target + 1, xfer.target_stop] = time_after_xfer
                             prev_stop[target + 1, xfer.target_stop] = stop
-                            prev_route[target + 1, xfer.target_stop] = XFER_ROUTE
+                            prev_trip[target + 1, xfer.target_stop] = XFER_ROUTE
                             prev_boardtime[target + 1, stop] = pre_xfer_time
                             push!(next_touched_stops, xfer.target_stop)
                         end

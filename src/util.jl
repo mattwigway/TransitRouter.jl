@@ -33,6 +33,14 @@ function meters_to_degrees_lon(meters::Real, lat::Real)::Float64
     return meters_to_degrees_lat(meters) / cosd(lat)
 end
 
+function to_gdal(v::Vector{<:LatLon})
+    geom = ArchGDAL.createlinestring()
+    for pt in v
+        ArchGDAL.addpoint!(geom, pt.lon, pt.lat)
+    end
+    return geom
+end
+
 function distance_meters(lat1::Real, lon1::Real, lat2::Real, lon2::Real)::Float64
     lat_diff = abs(lat1 - lat2)
     lat_diff_m = lat_diff * EARTH_CIRCUMFERENCE_METERS / 360

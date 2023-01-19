@@ -1,5 +1,7 @@
 # Build a network from a GTFS file name
 
+include("shapes.jl")
+
 function strip_colnames!(df)
     rename!(strip, df)
 end
@@ -134,8 +136,15 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
             @info "..calendar_dates.txt (not present)"
         end
 
+        shapes = if haskey(filename_map, "shapes.txt")
+            @info "..shapes.txt"
+            parse_shapes(filename_map["shapes.txt"])
+        else
+            Dict{String, Shape}()
+        end
+
         @info "..trips.txt"
-        trip_df = DataFrame(CSV.File(filename_map["trips.txt"]))
+        trip_df = DataFrame(CSV.File(filename_map["trips.txt"], types=Dict(:shape_id => String), validate=false))
         strip_colnames!(trip_df)
         ntrips = nrow(trip_df)
 
@@ -144,7 +153,19 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         for trow in Tables.rows(trip_df)
             service = net.serviceidx_for_id["$gtfs_filename:$(trow.service_id)"]
             route = net.routeidx_for_id["$gtfs_filename:$(trow.route_id)"]
-            trp = Trip(Vector{StopTime}(), route, service, -1)
+
+            shape = if "shape_id" ∈ names(trip_df)
+                if haskey(shapes, trow.shape_id)
+                    shapes[trow.shape_id]
+                else
+                    @error "Trip $(trow.trip_id) references nonexistent shape $(trow.shape_id)"
+                    nothing
+                end
+            else
+                nothing
+            end
+
+            trp = Trip(Vector{StopTime}(), route, service, -1, shape)
             push!(net.trips, trp)
             net.tripidx_for_id["$gtfs_filename:$(trow.trip_id)"] = length(net.trips)
         end
@@ -160,11 +181,23 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         for strow in Tables.rows(st_df)
             trp = net.trips[net.tripidx_for_id["$gtfs_filename:$(strow.trip_id)"]]
             stopidx = net.stopidx_for_id["$gtfs_filename:$(strow.stop_id)"]
+
+            shape_dist_traveled = if isnothing(trp.shape)
+                nothing
+            elseif "shape_dist_traveled" ∈ names(st_df)
+                strow.shape_dist_traveled
+            else
+                # naive snapping to shape
+                stop = net.stops[stopidx]
+                infer_shape_dist_traveled(trp.shape, stop.stop_lat, stop.stop_lon)
+            end
+
             st = StopTime(
                 stopidx,
                 strow.stop_sequence,
                 parse_gtfstime(strow.arrival_time),
-                parse_gtfstime(strow.departure_time)
+                parse_gtfstime(strow.departure_time),
+                shape_dist_traveled
             )
             push!(trp.stop_times, st)
         end

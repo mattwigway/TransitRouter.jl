@@ -82,7 +82,8 @@ function find_trip_patterns!(net::TransitNetwork)
                     trip.stop_times,
                     trip.route,
                     trip.service,
-                    tpidx
+                    tpidx,
+                    trip.shape
                 )
                 push!(trips_with_patterns, new_trip)
             end
@@ -124,10 +125,15 @@ function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real
             (t[2] !== stop)
             ), collect(enumerate(net.stops)))
 
-        candidate_xfers = map(t -> Transfer(
-            t[1],
-            distance_meters(stop.stop_lat, stop.stop_lon, t[2].stop_lat, t[2].stop_lon)
-        ), candidate_stops)
+        candidate_xfers = map(candidate_stops) do t
+            d = distance_meters(stop.stop_lat, stop.stop_lon, t[2].stop_lat, t[2].stop_lon)
+            geom = [
+                LatLon(stop.stop_lat, stop.stop_lon),
+                LatLon(t[2].stop_lat, t[2].stop_lon)
+            ]
+            # TODO make walk speed configurable
+            Transfer(t[1], d, d / DEFAULT_WALK_SPEED_METERS_PER_SECOND, geom)
+        end
 
         # some overselection possible in corners of bbox
         xfers = filter(xfer -> xfer.distance_meters <= max_distance_meters, candidate_xfers)
@@ -145,6 +151,7 @@ function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_dista
     empty!(net.transfers)
     total_transfers = 0
     sizehint!(net.transfers, length(net.stops))
+    # TODO find transfers in parallel
     for stop in ProgressBar(net.stops)
         # find nearby stops
         # could use a spatial index if this is slow
@@ -161,18 +168,25 @@ function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_dista
             ), collect(enumerate(net.stops))))
 
         # destinations has same order as candidate_stops
-        destinations = collect(map(s -> LatLon{Float64}(s[2].stop_lat, s[2].stop_lon), candidate_stops))
-
-        dmat = distance_matrix(osrm, [LatLon{Float64}(stop.stop_lat, stop.stop_lon)], destinations)
 
         xfers = Vector{Transfer}()
 
-        for dest_idx in 1:length(destinations)
+        for (dest_stopidx, dest_stop) in candidate_stops
             # convert the index in destinations back to the index in net.stops
-            stop_idx = candidate_stops[dest_idx][1]
-            netdist = dmat.distances[1, dest_idx]
-            if netdist < max_distance_meters
-                push!(xfers, Transfer(stop_idx, netdist))
+            rs = route(osrm, LatLon(stop.stop_lat, stop.stop_lon), LatLon(dest_stop.stop_lat, dest_stop.stop_lon))
+            if isempty(rs)
+                continue
+            end
+            rt = first(rs)
+
+            geom = LatLon{Float64}[]
+            for i in 0:(ArchGDAL.ngeom(rt.geometry) - 1)
+                pt = ArchGDAL.getpoint(rt.geometry, i)
+                push!(geom, LatLon(pt[2], pt[1]))
+            end
+
+            if rt.distance_meters < max_distance_meters
+                push!(xfers, Transfer(dest_stopidx, rt.distance_meters, rt.duration_seconds, geom))
             end
         end
 

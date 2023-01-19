@@ -4,7 +4,9 @@ struct StreetRaptorResult
     times_at_destinations::Vector{Int32}
     egress_stop_for_destination::Vector{Int64}
     access_geom_for_destination::Vector{Union{Nothing, LineString}}
+    access_dist_for_destination::Vector{Float64}
     egress_geom_for_destination::Vector{Union{Nothing, LineString}}
+    egress_dist_for_destination::Vector{Float64}
     raptor_result::RaptorResult
     departure_date_time::DateTime
 end
@@ -55,6 +57,7 @@ function street_raptor(
     times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations))
     egress_stops::Vector{Int64} = fill(INT_MISSING, length(destinations))
     egress_geoms::Vector{Union{Nothing, ArchGDAL.IGeometry{ArchGDAL.wkbLineString}}} = fill(nothing, length(destinations))
+    egress_dists::Vector{Float64} = fill(NaN, length(destinations))
 
     for stopidx in eachindex(net.stops)
         time_at_stop = raptor_res.times_at_stops_each_round[end, stopidx]
@@ -66,6 +69,7 @@ function street_raptor(
                         if time_at_dest < times_at_destinations[destidx]
                             times_at_destinations[destidx] = round(time_at_dest)
                             egress_stops[destidx] = stopidx
+                            egress_dists[destidx] = stop_to_destination_distances[stopidx, destidx]
                         end
                     end
                 else
@@ -85,6 +89,7 @@ function street_raptor(
                                     times_at_destinations[destidx] = round(time_at_dest)
                                     egress_stops[destidx] = stopidx
                                     egress_geoms[destidx] = route_to_dest.geometry
+                                    egress_dists[destidx] = route_to_dest.distance_meters
                                 end
                             end
                         end
@@ -94,20 +99,26 @@ function street_raptor(
         end
     end
 
-    access_geoms = find_access_geoms(net, access_router, egress_stops, raptor_res, origin)
+    access_geoms, access_dists = find_access_geoms(net, access_router, egress_stops, raptor_res, origin)
 
-    return StreetRaptorResult(times_at_destinations, egress_stops, access_geoms, egress_geoms, raptor_res, departure_date_time)
+    return StreetRaptorResult(times_at_destinations, egress_stops, access_geoms, access_dists, egress_geoms, egress_dists, raptor_res, departure_date_time)
 end
 
 # Find the geometries to access transit based on the access stops that were actually used for
 # each destination
 function find_access_geoms(net, osrm, egress_stops, raptor_res, origin)
     access_geom_dict = Dict{Int64, LineString}()
+    access_dist_dict = Dict{Int64, Float64}()
 
-    return map(egress_stops) do egress_stop
+    access_geoms = Union{Nothing, LineString}[]
+    access_dists = Float64[]
+
+    for egress_stop in egress_stops
         # find the access stop for this egress stop
         if egress_stop == INT_MISSING
-            return nothing
+            push!(access_geoms, nothing)
+            push!(access_dists, NaN)
+            continue
         end
 
         access_stop = egress_stop
@@ -121,13 +132,20 @@ function find_access_geoms(net, osrm, egress_stops, raptor_res, origin)
         end
 
         if haskey(access_geom_dict, access_stop)
-            access_geom_dict[access_stop]
+            push!(access_geoms, access_geom_dict[access_stop])
+            push!(access_dists, access_dist_dict[access_stop])
         else
             # compute the geometry
             access_stop_location = LatLon(net.stops[access_stop].stop_lat, net.stops[access_stop].stop_lon)
             routes = route(osrm, origin, access_stop_location)
             !isempty(routes) || error("No route found to stop $access_stop in access geometry search, but it was found in access search!")
-            first(routes).geometry
+            r = first(routes)
+            access_geom_dict[access_stop] = r.geometry
+            access_dist_dict[access_stop] = r.distance_meters
+            push!(access_geoms, r.geometry)
+            push!(access_dists, r.distance_meters)
         end
     end
+
+    return access_geoms, access_dists
 end
