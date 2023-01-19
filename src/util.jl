@@ -15,7 +15,7 @@ function parse_gtfsdate(gtfs_date::Integer)::Date
 end
 
 # convert a gtfs time to seconds since midnight
-function parse_gtfstime(gtfs_time::String)::Int32
+function parse_gtfstime(gtfs_time::AbstractString)::Int32
     h, m, s = split(gtfs_time, ':')
     return parse(Int32, h) * 3600 + parse(Int32, m) * 60 + parse(Int32, s)
 end
