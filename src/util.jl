@@ -69,6 +69,7 @@ end
 
 # also works on datetime
 time_to_seconds_since_midnight(time) = Dates.hour(time) * 3600 + Dates.minute(time) * 60 + Dates.second(time)
+seconds_since_midnight_to_time(secs) = Time(secs ÷ 3600, (secs % 3600) ÷ 60, secs % 60) 
 
 # primes are used in hashing
 # these are from https://primes.utm.edu/lists/small/1000.txt

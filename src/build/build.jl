@@ -24,7 +24,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         @debug "indexed file, keys $kys"
 
         @info "..stops.txt"
-        stop_df = DataFrame(CSV.File(read(filename_map["stops.txt"])))
+        stop_df = DataFrame(CSV.File(read(filename_map["stops.txt"]), types=Dict(:stop_id=>String)))
         strip_colnames!(stop_df)
         nstops = nrow(stop_df)
 
@@ -36,7 +36,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
             if (ismissing(srow.stop_lat) | ismissing(srow.stop_lon))
                 @warn "Stop $(srow.stop_id) is missing coordinates, skipping"
             else
-                stop = Stop(srow.stop_lat, srow.stop_lon)
+                stop = Stop(srow.stop_id, srow.stop_lat, srow.stop_lon, srow.stop_name)
                 push!(net.stops, stop)
                 net.stopidx_for_id["$gtfs_filename:$(srow.stop_id)"] = length(net.stops)
             end
@@ -45,14 +45,14 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         @info "...Read $nstops stops"
 
         @info "..routes.txt"
-        route_df = DataFrame(CSV.File(read(filename_map["routes.txt"]); types=Dict(:route_short_name => String, :route_long_name => String)))
+        route_df = DataFrame(CSV.File(read(filename_map["routes.txt"]); types=Dict(:route_id => String, :route_short_name => String, :route_long_name => String)))
         strip_colnames!(route_df)
         nroutes = nrow(route_df)
 
         sizehint!(net.routes, length(net.routes) + nroutes)
 
         for rrow in Tables.rows(route_df)
-            rte = Route(rrow.route_short_name, rrow.route_long_name, rrow.route_type)
+            rte = Route(rrow.route_id, rrow.route_short_name, rrow.route_long_name, rrow.route_type)
             push!(net.routes, rte)
             net.routeidx_for_id["$gtfs_filename:$(rrow.route_id)"] = length(net.routes)
         end
