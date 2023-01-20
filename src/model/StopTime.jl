@@ -7,4 +7,5 @@ struct StopTime
     stop_sequence::Int32
     arrival_time::Int32
     departure_time::Int32
+    shape_dist_traveled::Union{Float64, Nothing}
 end

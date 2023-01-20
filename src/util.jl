@@ -1,5 +1,3 @@
-using Dates
-
 # mean equatorial circumference, https://en.wikipedia.org/wiki/Earth
 const EARTH_CIRCUMFERENCE_METERS = 40_075_017
 
@@ -17,7 +15,7 @@ function parse_gtfsdate(gtfs_date::Integer)::Date
 end
 
 # convert a gtfs time to seconds since midnight
-function parse_gtfstime(gtfs_time::String)::Int32
+function parse_gtfstime(gtfs_time::AbstractString)::Int32
     h, m, s = split(gtfs_time, ':')
     return parse(Int32, h) * 3600 + parse(Int32, m) * 60 + parse(Int32, s)
 end
@@ -35,6 +33,14 @@ function meters_to_degrees_lon(meters::Real, lat::Real)::Float64
     return meters_to_degrees_lat(meters) / cosd(lat)
 end
 
+function to_gdal(v::Vector{<:LatLon})
+    geom = ArchGDAL.createlinestring()
+    for pt in v
+        ArchGDAL.addpoint!(geom, pt.lon, pt.lat)
+    end
+    return geom
+end
+
 function distance_meters(lat1::Real, lon1::Real, lat2::Real, lon2::Real)::Float64
     lat_diff = abs(lat1 - lat2)
     lat_diff_m = lat_diff * EARTH_CIRCUMFERENCE_METERS / 360
@@ -46,20 +52,24 @@ function distance_meters(lat1::Real, lon1::Real, lat2::Real, lon2::Real)::Float6
 end
 
 # return the indices into destinations that are within the bbox continaing radius_meters around the origin
-function bbox_filter(origin::Coordinate, destinations::Vector{Coordinate}, max_dist_meters::Real)::Vector{Int64}
+function bbox_filter(origin::LatLon{T}, destinations::Vector{LatLon{T}}, max_dist_meters::Real)::Vector{Int64} where T <: Real
     max_lat_diff = meters_to_degrees_lat(max_dist_meters)
-    max_lon_diff = meters_to_degrees_lon(max_dist_meters, origin.latitude)
+    max_lon_diff = meters_to_degrees_lon(max_dist_meters, origin.lat)
 
     candidate_dests = filter(collect(enumerate(destinations))) do t
         idx, dest = t
         return (
-            abs(origin.latitude - dest.latitude) < max_lat_diff &&
-            abs(origin.longitude - dest.longitude) < max_lon_diff
+            abs(origin.lat - dest.lat) < max_lat_diff &&
+            abs(origin.lon - dest.lon) < max_lon_diff
         )
     end
 
     return collect(map(c -> c[1], candidate_dests))
 end
+
+# also works on datetime
+time_to_seconds_since_midnight(time) = Dates.hour(time) * 3600 + Dates.minute(time) * 60 + Dates.second(time)
+seconds_since_midnight_to_time(secs) = Time(secs ÷ 3600, (secs % 3600) ÷ 60, secs % 60) 
 
 # primes are used in hashing
 # these are from https://primes.utm.edu/lists/small/1000.txt

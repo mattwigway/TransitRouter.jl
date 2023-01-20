@@ -1,6 +1,4 @@
 # represents a service - i.e. is a service running on a given day?
-using Dates
-
 struct Service
     monday::Bool
     tuesday::Bool
