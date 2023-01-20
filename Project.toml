@@ -1,6 +1,7 @@
 name = "TransitRouter"
 uuid = "f9e57d04-be1f-4339-a529-971801331ddb"
 authors = ["Matthew Wigginton Bhagat-Conway <mwbc@unc.edu>"]
+version = "0.0.2"
 
 [deps]
 ArchGDAL = "c9ce4bd3-c3d5-55b8-8973-c0e20141b8c3"
