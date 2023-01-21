@@ -22,29 +22,24 @@ function geom_between(shape::Shape, net, st1, st2)
     @info first_offset, last_offset, length(shape.shape_dist_traveled)
 
     # make the geometry
-    geom = ArchGDAL.createlinestring()
+    geom = LatLon{Float64}[]
 
     # first stop location (let's hope it's on the shape...)
     first_stop = net.stops[st1.stop]
-    ArchGDAL.addpoint!(geom, first_stop.stop_lon, first_stop.stop_lat)
+    push!(geom, LatLon(first_stop.stop_lat, first_stop.stop_lon))
 
     # intermediate shape locations
     for ptidx in first_offset:last_offset
         point = shape.geom[ptidx]
-        ArchGDAL.addpoint!(geom, point.lon, point.lat)
+        push!(geom, point)
     end
 
     # last stop location
     last_stop = net.stops[st2.stop]
-    ArchGDAL.addpoint!(geom, last_stop.stop_lon, last_stop.stop_lat)
+    push!(geom, LatLon(last_stop.stop_lat, last_stop.stop_lon))
 
     if reversed
-        new_geom = ArchGDAL.createlinestring()
-        for ptidx in (ArchGDAL.ngeom(geom) - 1):-1:0
-            point = ArchGDAL.getpoint(geom, ptidx)
-            ArchGDAL.addpoint!(new_geom, point[1], point[2])
-        end
-        geom = new_geom
+        reverse!(geom)
     end
 
     return geom
@@ -63,10 +58,10 @@ function stop_to_stop_geom(trip, net, st1, st2)
     st1idx = findfirst(trip.stop_times .== st1)
     st2idx = findfirst(trip.stop_times .== st2)
     !isnothing(st1idx) && !isnothing(st2idx) || error("Stop time not found in trip!")
-    geom = ArchGDAL.createlinestring()
+    geom = LatLon{Float64}[]
     for stop_time in trip.stop_times[st1idx:st2idx]
         stop = net.stops[stop_time.stop]
-        ArchGDAL.addpoint!(geom, stop.stop_lon, stop.stop_lat)
+        push!(geom, LatLon(stop.stop_lat, stop.stop_lon))
     end
 
     return geom

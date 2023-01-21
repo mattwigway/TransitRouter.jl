@@ -179,14 +179,8 @@ function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_dista
             end
             rt = first(rs)
 
-            geom = LatLon{Float64}[]
-            for i in 0:(ArchGDAL.ngeom(rt.geometry) - 1)
-                pt = ArchGDAL.getpoint(rt.geometry, i)
-                push!(geom, LatLon(pt[2], pt[1]))
-            end
-
             if rt.distance_meters < max_distance_meters
-                push!(xfers, Transfer(dest_stopidx, rt.distance_meters, rt.duration_seconds, geom))
+                push!(xfers, Transfer(dest_stopidx, rt.distance_meters, rt.duration_seconds, rt.geometry))
             end
         end
 
@@ -254,7 +248,8 @@ function _interpolate_segment_times(net::TransitNetwork, stop_times::Vector{Stop
             stop_times[i].stop,
             stop_times[i].stop_sequence,
             interp_time,
-            interp_time
+            interp_time,
+            stop_times[i].shape_dist_traveled
         ))
     end
 

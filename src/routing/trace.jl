@@ -10,7 +10,7 @@ struct Leg
     type::LegType
     route::Union{Missing, Route}
     distance_meters::Union{Missing, Float64}
-    geometry::LineString
+    geometry::Vector{LatLon}
 end
 
 # trace the transit portion of the path
@@ -48,7 +48,7 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
                 transfer,
                 missing,
                 xfer.distance_meters,
-                to_gdal(xfer.geometry)
+                xfer.geometry
             )
         else
             prev_trip_idx = res.prev_trip[round, current_stop]
