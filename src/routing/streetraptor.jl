@@ -3,9 +3,9 @@
 struct StreetRaptorResult
     times_at_destinations::Vector{Int32}
     egress_stop_for_destination::Vector{Int64}
-    access_geom_for_destination::Vector{Union{Nothing, LineString}}
+    access_geom_for_destination::Vector{Union{Nothing, Vector{LatLon{Float64}}}}
     access_dist_for_destination::Vector{Float64}
-    egress_geom_for_destination::Vector{Union{Nothing, LineString}}
+    egress_geom_for_destination::Vector{Union{Nothing, Vector{LatLon{Float64}}}}
     egress_dist_for_destination::Vector{Float64}
     raptor_result::RaptorResult
     departure_date_time::DateTime
@@ -56,7 +56,7 @@ function street_raptor(
     @info "transit routing complete. adding egress times."
     times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations))
     egress_stops::Vector{Int64} = fill(INT_MISSING, length(destinations))
-    egress_geoms::Vector{Union{Nothing, ArchGDAL.IGeometry{ArchGDAL.wkbLineString}}} = fill(nothing, length(destinations))
+    egress_geoms::Vector{Union{Nothing, Vector{LatLon{Float64}}}} = fill(nothing, length(destinations))
     egress_dists::Vector{Float64} = fill(NaN, length(destinations))
 
     for stopidx in eachindex(net.stops)
@@ -107,10 +107,10 @@ end
 # Find the geometries to access transit based on the access stops that were actually used for
 # each destination
 function find_access_geoms(net, osrm, egress_stops, raptor_res, origin)
-    access_geom_dict = Dict{Int64, LineString}()
+    access_geom_dict = Dict{Int64, Vector{LatLon{Float64}}}()
     access_dist_dict = Dict{Int64, Float64}()
 
-    access_geoms = Union{Nothing, LineString}[]
+    access_geoms = Union{Nothing, Vector{LatLon{Float64}}}[]
     access_dists = Float64[]
 
     for egress_stop in egress_stops
