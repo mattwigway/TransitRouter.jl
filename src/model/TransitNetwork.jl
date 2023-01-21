@@ -19,6 +19,11 @@ struct TransitNetwork
     # NB could also put this inside stop and pattern structs, but would prevent stop packing
     patterns_for_stop::Vector{Vector{Int64}}
     trips_for_pattern::Vector{Vector{Int64}}
+
+    # if true, this network has been reversed - i.e. all stop times have been multiplied by -1,
+    # and arrival and departure times have been reversed. This allows us to use normal forward
+    # routing algorithms to get a reverse (arrive-by) search.
+    network_is_reversed::Bool
 end
 
 TransitNetwork() = TransitNetwork(
@@ -33,8 +38,78 @@ TransitNetwork() = TransitNetwork(
     Vector{TripPattern}(),
     Vector{Vector{Transfer}}(),
     Vector{Vector{Int64}}(),
-    Vector{Vector{Int64}}()
+    Vector{Vector{Int64}}(),
+    false
     )
+
+# Reverse a network - all stop times are multiplied by -1, arrival/departure times are switched, and
+# stop times and patterns are reversed. This is so we can accomplish reverse routing without a mess
+# of conditionals in the algorithms; we just use forward routing algorithms on a backwards network.
+# all that is required is to specify StopAndTime with negative times.
+function reversed_network(network)
+    network.network_is_reversed && error("network is already reversed!")
+    # first, reverse the stop times
+    new_trips = map(network.trips) do trip
+        new_stop_times = map(enumerate(trip.stop_times)) do (stidx, original_st)
+            StopTime(
+                original_st.stop,
+                length(trip.stop_times) - stidx + 1,
+                -original_st.departure_time,
+                -original_st.arrival_time,
+                original_st.shape_dist_traveled  # reversed shapes handled gracefully already
+            )
+        end
+        reverse!(new_stop_times)
+        Trip(
+            new_stop_times,
+            trip.route,
+            trip.service,
+            trip.pattern,
+            trip.shape
+        )
+    end
+
+    new_patterns = map(network.patterns) do original_pattern
+        TripPattern(
+            reverse(original_pattern.stops),
+            original_pattern.service
+        )
+    end
+
+    # and turn all the transfers around
+    new_transfers = Vector{Vector{Transfer}}()
+
+    for _ in 1:length(network.stops)
+        push!(new_transfers, Vector{Transfer}())
+    end
+
+    for (source_stop, xfers) in enumerate(network.transfers)
+        for xfer in xfers
+            push!(new_transfers[xfer.target_stop], Transfer(
+                source_stop,
+                xfer.distance_meters,
+                xfer.duration_seconds,
+                reverse(xfer.geometry)
+            ))
+        end
+    end
+
+    return TransitNetwork(
+        network.stops,
+        network.stopidx_for_id,
+        network.routes,
+        network.routeidx_for_id,
+        network.services,
+        network.serviceidx_for_id,
+        new_trips,
+        network.tripidx_for_id,
+        new_patterns,
+        new_transfers,
+        network.patterns_for_stop,
+        network.trips_for_pattern,
+        true
+    )
+end
 
 # ensure that stop times are ordered by stop stop_sequence in each trip
 function sort_stoptimes!(net::TransitNetwork)

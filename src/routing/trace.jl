@@ -40,16 +40,29 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
                 xfer = net.transfers[prev_stop][findfirst(t -> t.target_stop == current_stop, net.transfers[prev_stop])]
             end
 
+            if net.network_is_reversed
             Leg(
-                seconds_since_midnight_to_time(prev_time),
-                seconds_since_midnight_to_time(time_after_round),
-                net.stops[prev_stop],
-                net.stops[current_stop],
-                transfer,
-                missing,
-                xfer.distance_meters,
-                xfer.geometry
-            )
+                    seconds_since_midnight_to_time(-time_after_round),
+                    seconds_since_midnight_to_time(-prev_time),
+                    net.stops[current_stop],
+                    net.stops[prev_stop],
+                    transfer,
+                    missing,
+                    xfer.distance_meters,
+                    reverse(xfer.geometry)
+                )
+            else
+                Leg(
+                    seconds_since_midnight_to_time(prev_time),
+                    seconds_since_midnight_to_time(time_after_round),
+                    net.stops[prev_stop],
+                    net.stops[current_stop],
+                    transfer,
+                    missing,
+                    xfer.distance_meters,
+                    xfer.geometry
+                )
+            end
         else
             prev_trip_idx = res.prev_trip[round, current_stop]
             prev_time = res.prev_boardtime[round, current_stop]
@@ -57,15 +70,28 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
             st1 = findfirst(st -> st.stop == prev_stop && st.departure_time == prev_time, prev_trip.stop_times)
             st2 = findfirst(st -> st.stop == current_stop && st.arrival_time == time_after_round, prev_trip.stop_times)
             geom = geom_between(prev_trip, net, prev_trip.stop_times[st1], prev_trip.stop_times[st2])
+
+            if net.network_is_reversed
             Leg(
-                seconds_since_midnight_to_time(prev_time),
-                seconds_since_midnight_to_time(time_after_round),
-                net.stops[prev_stop],
+                seconds_since_midnight_to_time(-time_after_round),
+                seconds_since_midnight_to_time(-prev_time),
                 net.stops[current_stop],
+                net.stops[prev_stop],
                 transit,
                 net.routes[net.trips[prev_trip_idx].route],
                 missing,
                 geom)
+            else
+                Leg(
+                    seconds_since_midnight_to_time(prev_time),
+                    seconds_since_midnight_to_time(time_after_round),
+                    net.stops[prev_stop],
+                    net.stops[current_stop],
+                    transit,
+                    net.routes[net.trips[prev_trip_idx].route],
+                    missing,
+                    geom)
+            end
         end
 
         push!(legs, leg)
@@ -74,7 +100,9 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
         current_stop = prev_stop
     end
 
-    reverse!(legs)
+    if !net.network_is_reversed
+        reverse!(legs)
+    end
 
     return legs
 end
