@@ -3,8 +3,8 @@
 @enum LegType transit transfer access egress
 
 struct Leg
-    start_time::Time
-    end_time::Time
+    start_time::DateTime
+    end_time::DateTime
     origin_stop::Union{Missing, Stop}
     destination_stop::Union{Missing, Stop}
     type::LegType
@@ -41,8 +41,8 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
             end
 
             Leg(
-                seconds_since_midnight_to_time(prev_time),
-                seconds_since_midnight_to_time(time_after_round),
+                seconds_since_midnight_to_datetime(res.date, prev_time),
+                seconds_since_midnight_to_datetime(res.date, time_after_round),
                 net.stops[prev_stop],
                 net.stops[current_stop],
                 transfer,
@@ -58,8 +58,8 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
             st2 = findfirst(st -> st.stop == current_stop && st.arrival_time == time_after_round, prev_trip.stop_times)
             geom = geom_between(prev_trip, net, prev_trip.stop_times[st1], prev_trip.stop_times[st2])
             Leg(
-                seconds_since_midnight_to_time(prev_time),
-                seconds_since_midnight_to_time(time_after_round),
+                seconds_since_midnight_to_datetime(res.date, prev_time),
+                seconds_since_midnight_to_datetime(res.date, time_after_round),
                 net.stops[prev_stop],
                 net.stops[current_stop],
                 transit,
@@ -82,6 +82,7 @@ end
 function trace_path(net::TransitNetwork, res::StreetRaptorResult, destination::Int64)
     # get the transit path
     dest_stop = res.egress_stop_for_destination[destination]
+    depart_date = Date(res.departure_date_time)
 
     if dest_stop == INT_MISSING
         return missing
@@ -93,8 +94,8 @@ function trace_path(net::TransitNetwork, res::StreetRaptorResult, destination::I
     dest_time = res.times_at_destinations[destination]
     final_stop_arr_time = res.raptor_result.times_at_stops_each_round[size(res.raptor_result.times_at_stops_each_round, 1), dest_stop]
     egress_leg = Leg(
-        seconds_since_midnight_to_time(final_stop_arr_time),
-        seconds_since_midnight_to_time(dest_time),
+        seconds_since_midnight_to_datetime(depart_date, final_stop_arr_time),
+        seconds_since_midnight_to_datetime(depart_date, dest_time),
         net.stops[dest_stop],
         missing,
         egress,
@@ -107,9 +108,12 @@ function trace_path(net::TransitNetwork, res::StreetRaptorResult, destination::I
     # add the access
     initial_board_stop = findfirst(s -> s === legs[1].origin_stop, net.stops)
     # first round is access times
-    arrival_time_at_initial_board_stop = seconds_since_midnight_to_time(res.raptor_result.times_at_stops_each_round[1, initial_board_stop])
+    arrival_time_at_initial_board_stop = seconds_since_midnight_to_datetime(
+        depart_date,
+        res.raptor_result.times_at_stops_each_round[1, initial_board_stop]
+    )
     access_leg = Leg(
-        Time(res.departure_date_time),
+        res.departure_date_time,
         arrival_time_at_initial_board_stop,
         missing,
         net.stops[initial_board_stop],

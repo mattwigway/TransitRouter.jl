@@ -25,6 +25,7 @@ struct RaptorResult
     prev_stop::Array{Int64, 2}
     prev_trip::Array{Int64, 2}
     prev_boardtime::Array{Int32, 2}
+    date::Date
 end
 
 function empty_no_resize!(s::BitSet)
@@ -83,7 +84,8 @@ function raptor(
         times_at_stops,
         prev_stop,
         prev_trip,
-        prev_boardtime
+        prev_boardtime,
+        date
     )
 end
 

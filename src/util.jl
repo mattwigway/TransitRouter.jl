@@ -1,5 +1,10 @@
 # mean equatorial circumference, https://en.wikipedia.org/wiki/Earth
 const EARTH_CIRCUMFERENCE_METERS = 40_075_017
+const SECONDS_PER_MINUTE = 60
+const MINUTES_PER_HOUR = 60
+const HOURS_PER_DAY = 24
+const SECONDS_PER_HOUR = SECONDS_PER_MINUTE * MINUTES_PER_HOUR
+const SECONDS_PER_DAY = SECONDS_PER_HOUR * HOURS_PER_DAY
 
 function parse_gtfsdate(gtfs_date::String)::Date 
     return Date(gtfs_date, "yyyymmdd")
@@ -17,6 +22,7 @@ end
 # convert a gtfs time to seconds since midnight
 function parse_gtfstime(gtfs_time::AbstractString)::Int32
     h, m, s = split(gtfs_time, ':')
+    # NB this handles times past midnight just fine
     return parse(Int32, h) * 3600 + parse(Int32, m) * 60 + parse(Int32, s)
 end
 
@@ -69,7 +75,21 @@ end
 
 # also works on datetime
 time_to_seconds_since_midnight(time) = Dates.hour(time) * 3600 + Dates.minute(time) * 60 + Dates.second(time)
-seconds_since_midnight_to_time(secs) = Time(secs ÷ 3600, (secs % 3600) ÷ 60, secs % 60) 
+function seconds_since_midnight_to_datetime(date, secs)
+    # add 100 days to ensure flooring is always down (÷ floors towards 0) and modulo is always positive
+    secs += 100 * SECONDS_PER_DAY
+
+    secs > 0 || throw(DomainError(secs, "Seconds cannot indicate more than 100 days in the past"))
+
+    offset_days = secs ÷ SECONDS_PER_DAY - 100
+    # add 100 days to ensure that modulo is positive
+    wrapped_secs = secs % SECONDS_PER_DAY
+    DateTime(
+        # add add'l days if after midnight on svc day
+        date + Dates.Day(offset_days),
+        Time(wrapped_secs ÷ SECONDS_PER_HOUR, (wrapped_secs % SECONDS_PER_HOUR) ÷ SECONDS_PER_MINUTE, wrapped_secs % SECONDS_PER_MINUTE)
+    )
+end
 
 # primes are used in hashing
 # these are from https://primes.utm.edu/lists/small/1000.txt
