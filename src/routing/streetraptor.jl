@@ -130,6 +130,11 @@ function find_access_geoms(net, osrm, egress_stops, raptor_res, origin)
             else
                 access_stop = prev
             end
+
+            # handle a transfer
+            if idx > 1 && raptor_res.prev_transfer_stop[idx - 1, access_stop]
+                access_stop = raptor_res.prev_transfer_stop[idx - 1, access_stop]
+            end
         end
 
         if haskey(access_geom_dict, access_stop)
