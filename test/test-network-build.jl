@@ -3,9 +3,9 @@ function build_gtfs()
 
     # add a few stops
     downtown = add_stop!(gtfs, 35.9932, -78.8975, stop_name="Downtown", stop_id="dtn")
-    nccu = add_stop!(gtfs, 35.9728, -78.8952, stop_name="NCCU")
-    lowes = add_stop!(gtfs, 35.9409, -78.9078, stop_name="Lowes")
-    rtp = add_stop!(gtfs, 35.9208, -78.8751, stop_name="RTP")
+    nccu = add_stop!(gtfs, 35.9728, -78.8952, stop_name="NCCU", stop_id="nccu")
+    lowes = add_stop!(gtfs, 35.9409, -78.9078, stop_name="Lowes", stop_id="lowes")
+    rtp = add_stop!(gtfs, 35.9208, -78.8751, stop_name="RTP", stop_id="rtp")
 
     fayetteville = add_route!(gtfs, "Fayetteville", route_id="ftv")
     rtp_express = add_route!(gtfs, "RTP Express", route_id="rtpx")
@@ -28,12 +28,36 @@ function build_gtfs()
     ))
 
     # add a few trips to the routes
+    # the pattern Downtown -> NCCU -> Lowes -> RTP should have two trips
     add_trip!(gtfs, fayetteville, every_day, (
         (downtown, "08:00:00"),
         (nccu, "08:12:00"),
         (lowes, "08:18:00"),
         (rtp, "08:21:00")
-    ))
+    ), trip_id="f1")
+
+    add_trip!(gtfs, fayetteville, every_day, (
+        (downtown, "08:05:00"),
+        (nccu, "08:17:00"),
+        (lowes, "08:23:00"),
+        (rtp, "08:40:00")
+    ), trip_id="f2")
+
+    # The opposite pattern also has two, but should end up in separate
+    # patterns because they don't run the same days
+    add_trip!(gtfs, fayetteville, every_day, (
+        (rtp, "16:00:00"),
+        (lowes, "16:10:00"),
+        (nccu, "16:15:00"),
+        (downtown, "16:22:00")
+    ), trip_id="f-1")
+
+    add_trip!(gtfs, fayetteville, weekdays_only, (
+        (rtp, "17:00:00"),
+        (lowes, "17:10:00"),
+        (nccu, "17:15:00"),
+        (downtown, "17:22:00")
+    ), trip_id="f-2")
 
     return gtfs
 end
@@ -45,12 +69,15 @@ end
         net::TransitNetwork = build_network([gtfspath])
 
         # Check stops - four stops read, stop names and locations read correctly
+        downtown = net.stopidx_for_id["$(gtfspath):dtn"]
+        nccu = net.stopidx_for_id["$(gtfspath):nccu"]
+        lowes = net.stopidx_for_id["$(gtfspath):lowes"]
+        rtp = net.stopidx_for_id["$(gtfspath):rtp"]
         @testset "Stops" begin
             @test length(net.stops) == 4
-            downtown = net.stops[net.stopidx_for_id["$(gtfspath):dtn"]]
-            @test downtown.stop_name == "Downtown"
-            @test downtown.stop_lat == 35.9932
-            @test downtown.stop_lon == -78.8975
+            @test net.stops[downtown].stop_name == "Downtown"
+            @test net.stops[downtown].stop_lat == 35.9932
+            @test net.stops[downtown].stop_lon == -78.8975
         end
 
         @testset "Routes" begin
@@ -96,5 +123,98 @@ end
             @test !TransitRouter.is_service_running(calendar_only, Date(2024, 2, 1))
         end
 
+        @testset "Trips and patterns" begin
+            @test length(net.trips) == 4
+            @test length(net.patterns) == 3
+
+            downtown_rtp = findall(map(p -> p.stops == [downtown, nccu, lowes, rtp], net.patterns))
+            @test length(downtown_rtp) == 1
+            @test net.patterns[downtown_rtp[1]].service == net.serviceidx_for_id["$(gtfspath):every_day"]
+
+            # should be two trips
+            downtown_rtp_trips = map(x -> net.trips[x], net.trips_for_pattern[downtown_rtp[1]])
+            println(downtown_rtp_trips)
+            
+            @test length(downtown_rtp_trips) == 2
+
+            for trip in downtown_rtp_trips
+                @test trip.route == net.routeidx_for_id["$(gtfspath):ftv"]
+                @test trip.service == net.serviceidx_for_id["$(gtfspath):every_day"]
+                
+                @test length(trip.stop_times) == 4
+                @test trip.stop_times[1].stop == downtown
+                @test trip.stop_times[2].stop == nccu
+                @test trip.stop_times[3].stop == lowes
+                @test trip.stop_times[4].stop == rtp
+            end
+
+            # force them into order
+            sort!(downtown_rtp_trips, by=x->x.stop_times[1].departure_time)
+            
+            @test downtown_rtp_trips[1].stop_times[1].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 0))
+            @test downtown_rtp_trips[1].stop_times[2].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 12))
+            @test downtown_rtp_trips[1].stop_times[3].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 18))
+            @test downtown_rtp_trips[1].stop_times[4].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 21))
+
+            @test downtown_rtp_trips[2].stop_times[1].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 5))
+            @test downtown_rtp_trips[2].stop_times[2].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 17))
+            @test downtown_rtp_trips[2].stop_times[3].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 23))
+            @test downtown_rtp_trips[2].stop_times[4].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 40))
+
+            @test downtown_rtp_trips[1].stop_times[1].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 0))
+            @test downtown_rtp_trips[1].stop_times[2].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 12))
+            @test downtown_rtp_trips[1].stop_times[3].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 18))
+            @test downtown_rtp_trips[1].stop_times[4].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 21))
+
+            @test downtown_rtp_trips[2].stop_times[1].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 5))
+            @test downtown_rtp_trips[2].stop_times[2].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 17))
+            @test downtown_rtp_trips[2].stop_times[3].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 23))
+            @test downtown_rtp_trips[2].stop_times[4].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 40))
+        
+            # there should be two patterns for this because they have different services
+            rtp_downtown = findall(map(p -> p.stops == [rtp, lowes, nccu, downtown], net.patterns))
+            @test length(rtp_downtown) == 2
+
+            # these depend on order. Possible they would get reversed in the future, causing this
+            # test to fail.
+            @test net.patterns[rtp_downtown[1]].service == net.serviceidx_for_id["$(gtfspath):every_day"]
+            @test net.patterns[rtp_downtown[2]].service == net.serviceidx_for_id["$(gtfspath):weekdays_only"]
+
+            @test length(net.trips_for_pattern[rtp_downtown[1]]) == 1
+            @test length(net.trips_for_pattern[rtp_downtown[2]]) == 1
+
+            trip_1 = net.trips[net.trips_for_pattern[rtp_downtown[1]][1]]
+            @test trip_1.stop_times[1].stop == rtp
+            @test trip_1.stop_times[2].stop == lowes
+            @test trip_1.stop_times[3].stop == nccu
+            @test trip_1.stop_times[4].stop == downtown
+
+            @test trip_1.stop_times[1].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 0))
+            @test trip_1.stop_times[2].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 10))
+            @test trip_1.stop_times[3].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 15))
+            @test trip_1.stop_times[4].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 22))
+
+            @test trip_1.stop_times[1].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 0))
+            @test trip_1.stop_times[2].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 10))
+            @test trip_1.stop_times[3].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 15))
+            @test trip_1.stop_times[4].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(16, 22))
+
+
+            trip_2 = net.trips[net.trips_for_pattern[rtp_downtown[2]][1]]
+            @test trip_2.stop_times[1].stop == rtp
+            @test trip_2.stop_times[2].stop == lowes
+            @test trip_2.stop_times[3].stop == nccu
+            @test trip_2.stop_times[4].stop == downtown
+
+            @test trip_2.stop_times[1].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 0))
+            @test trip_2.stop_times[2].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 10))
+            @test trip_2.stop_times[3].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 15))
+            @test trip_2.stop_times[4].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 22))
+
+            @test trip_2.stop_times[1].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 0))
+            @test trip_2.stop_times[2].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 10))
+            @test trip_2.stop_times[3].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 15))
+            @test trip_2.stop_times[4].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 22))
+        end
     end
 end
