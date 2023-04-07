@@ -165,7 +165,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
         # do transfers, but skip after last iteration
         if round < max_rides
             times_at_stops[target, :] = non_transfer_times_at_stops[target, :]
-            transfer_prev_stop[target, :] .= 1:size(transfer_prev_stop, 2)
+
             # leave other things missing if there were no transfers
             for stop in touched_stops
                 push!(next_touched_stops, stop)  # this stop was touched by this round
