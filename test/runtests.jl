@@ -1,4 +1,4 @@
-using Test, TransitRouter, Dates, CSV, ZipFile
+using Test, TransitRouter, Dates, CSV, ZipFile, Dates
 
 include("mock_gtfs.jl")
 include("time-tests.jl")
