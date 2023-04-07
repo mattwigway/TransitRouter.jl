@@ -61,7 +61,7 @@ function street_raptor(
     egress_dists::Vector{Float64} = fill(NaN, length(destinations))
 
     for stopidx in eachindex(net.stops)
-        time_at_stop = raptor_res.times_at_stops_each_round[end, stopidx]
+        time_at_stop = raptor_res.non_transfer_times_at_stops_each_round[end, stopidx]
         if time_at_stop < MAX_TIME
             for destidx in eachindex(destinations)
                 if !isnothing(stop_to_destination_distances) && !isnothing(stop_to_destination_durations)
