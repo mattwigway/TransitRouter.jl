@@ -77,6 +77,7 @@ function find_trip_patterns!(net::TransitNetwork)
         for (tpidx, tp) in tp_hashes[hash]
             # short circuit and means vector equality won't be tested unless vectors are same length
             if ((tp.service == trip.service) && length(tp.stops) == length(stops) && all(tp.stops .== stops))
+                @assert !found_pattern "Found multiple matching patterns (internal error)"
                 found_pattern = true
                 new_trip = Trip(
                     trip.stop_times,
@@ -95,9 +96,19 @@ function find_trip_patterns!(net::TransitNetwork)
             push!(net.patterns, tp)
             tpidx = length(net.patterns)
             push!(tp_hashes[hash], (tpidx, tp))
+            
+            new_trip = Trip(
+                trip.stop_times,
+                trip.route,
+                trip.service,
+                tpidx,
+                trip.shape
+            )
+            push!(trips_with_patterns, new_trip)
         end
     end
 
+    @assert length(net.trips) == length(trips_with_patterns)
     # clear the entire trips array
     empty!(net.trips)
     append!(net.trips, trips_with_patterns)
