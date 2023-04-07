@@ -237,3 +237,39 @@ end
         end
     end
 end
+
+@testset "Stop time interpolation" begin
+    gtfs = MockGTFS()
+
+    # stop 2 should be 1/2 way, stop 3 3/4 way to stop 4
+    stop1 = add_stop!(gtfs, 36.3105, -79.4541)
+    stop2 = add_stop!(gtfs, 36.3305, -79.4541)
+    stop3 = add_stop!(gtfs, 36.3405, -79.4541)
+    stop4 = add_stop!(gtfs, 36.3505, -79.4541)
+
+    r = add_route!(gtfs)
+    s = add_service!(gtfs, 20230101, 20231231)
+    add_trip!(gtfs, r, s, (
+        # include some duplicate stops as well
+        (stop2, "6:55:00", "6:55:00"),
+        (stop1, "7:00:00", "8:00:00"),  # including arrival and departure times, to make sure that proper one is used
+        (stop2, "", ""), # leave blank to be interpolated
+        (stop3, "", ""),
+        (stop4, "9:00:00", "10:00:00"),
+        (stop2, "10:30:00", "10:30:00")
+    ))
+
+    with_gtfs(gtfs) do gtfspath
+        net = build_network([gtfspath])
+        @test length(net.trips) == 1
+        trip = net.trips[1]
+
+        @test net.stops[trip.stop_times[3].stop].stop_id == stop2
+        @test trip.stop_times[3].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 30))
+        @test trip.stop_times[3].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 30))
+
+        @test net.stops[trip.stop_times[4].stop].stop_id == stop3
+        @test trip.stop_times[4].arrival_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 45))
+        @test trip.stop_times[4].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(8, 45))
+    end
+end

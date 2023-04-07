@@ -74,7 +74,7 @@ MockGTFS(o::MockGTFS) = MockGTFS(
 
 nextid(o::MockGTFS) = string(popfirst!(o.id_iterator))
 
-function add_stop!(o::MockGTFS, stop_lat::Float64, stop_lon::Float64; stop_name="", stop_id=nextid(o))
+function add_stop!(o::MockGTFS, stop_lat::Float64, stop_lon::Float64; stop_name="stop", stop_id=nextid(o))
     push!(o.stops, GTFSStop((stop_id, stop_name, stop_lat, stop_lon)))
     return stop_id
 end
@@ -136,9 +136,8 @@ function add_trip!(o::MockGTFS, route_id, service_id, stops_and_times; trip_id=n
 
         push!(o.stop_times, GTFSStopTime((trip_id, stop_id, arrival_time, departure_time, stop_seq)))
 
-        # make them monotonically increasing, but not consecutive, using minute field
-        # from GTFS
-        stop_seq += parse(Int64, arrival_time[end-4:end-3]) % 5 + 1
+        # make them monotonically increasing, but not consecutive
+        stop_seq *= 2
     end
     return trip_id
 end
