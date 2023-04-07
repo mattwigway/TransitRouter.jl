@@ -19,8 +19,6 @@ function geom_between(shape::Shape, net, st1, st2)
     first_offset = findfirst(shape.shape_dist_traveled .≥ st1.shape_dist_traveled)
     last_offset = findfirst(shape.shape_dist_traveled .> st2.shape_dist_traveled) - 1
 
-    @info first_offset, last_offset, length(shape.shape_dist_traveled)
-
     # make the geometry
     geom = LatLon{Float64}[]
 
