@@ -137,7 +137,7 @@ function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real
             ), collect(enumerate(net.stops)))
 
         candidate_xfers = map(candidate_stops) do t
-            d = distance_meters(stop.stop_lat, stop.stop_lon, t[2].stop_lat, t[2].stop_lon)
+            d = euclidean_distance(LatLon(stop.stop_lat, stop.stop_lon), LatLon(t[2].stop_lat, t[2].stop_lon))
             geom = [
                 LatLon(stop.stop_lat, stop.stop_lon),
                 LatLon(t[2].stop_lat, t[2].stop_lon)
@@ -237,11 +237,9 @@ function _interpolate_segment_times(net::TransitNetwork, stop_times::Vector{Stop
     for i in 1:(length(stop_times) - 1)
         fr = net.stops[stop_times[i].stop]
         to = net.stops[stop_times[i + 1].stop]
-        push!(distances, distance_meters(
-            fr.stop_lat,
-            fr.stop_lon,
-            to.stop_lat,
-            to.stop_lon
+        push!(distances, euclidean_distance(
+            LatLon(fr.stop_lat, fr.stop_lon),
+            LatLon(to.stop_lat, to.stop_lon)
         ))
     end
 
