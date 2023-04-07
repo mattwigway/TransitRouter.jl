@@ -73,11 +73,11 @@ function raptor(
     # get which service idxes are running
     services_running = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date), collect(enumerate(net.services)))))
 
-    @info "$(length(services_running)) services running on requested date"
+    @debug "$(length(services_running)) services running on requested date"
 
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
     # a bounded bitset implementation that did not dynamically resize.
-    @time run_raptor!(net, times_at_stops, prev_stop, prev_trip, prev_boardtime, walk_speed_meters_per_second,
+    run_raptor!(net, times_at_stops, prev_stop, prev_trip, prev_boardtime, walk_speed_meters_per_second,
         max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
 
     return RaptorResult(
@@ -155,7 +155,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, prev_
             end
         end # loop over prev_touched_stop
 
-        #@info "round $round found $(length(touched_stops)) stops accessible by transit"
+        @debug "round $round found $(length(touched_stops)) stops accessible by transit"
 
         # clear prev_touched_stops and reuse as next_touched_stops, avoid allocation
         empty!(prev_touched_stops)

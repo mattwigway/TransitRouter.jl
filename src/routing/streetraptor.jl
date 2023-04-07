@@ -25,7 +25,8 @@ function street_raptor(
     stop_to_destination_distances=nothing,
     stop_to_destination_durations=nothing
     )::StreetRaptorResult
-    @info "performing access search"
+
+    @debug "performing access search"
 
     # find stops near origin
     stop_coords = map(s -> LatLon{Float64}(s.stop_lat, s.stop_lon), net.stops)
@@ -47,13 +48,13 @@ function street_raptor(
         end
     end
 
-    @info "$(length(accessible_stops)) stops found near origin"
-    @info "begin transit routing"
+    @debug "$(length(accessible_stops)) stops found near origin"
+    @debug "begin transit routing"
 
     raptor_res = raptor(net, accessible_stops, Date(departure_date_time);
         walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
 
-    @info "transit routing complete. adding egress times."
+    @debug "transit routing complete. adding egress times."
     times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations))
     egress_stops::Vector{Int64} = fill(INT_MISSING, length(destinations))
     egress_geoms::Vector{Union{Nothing, Vector{LatLon{Float64}}}} = fill(nothing, length(destinations))
