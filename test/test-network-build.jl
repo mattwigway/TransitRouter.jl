@@ -6,6 +6,7 @@ function build_gtfs()
     nccu = add_stop!(gtfs, 35.9728, -78.8952, stop_name="NCCU", stop_id="nccu")
     lowes = add_stop!(gtfs, 35.9409, -78.9078, stop_name="Lowes", stop_id="lowes")
     rtp = add_stop!(gtfs, 35.9208, -78.8751, stop_name="RTP", stop_id="rtp")
+    rtp2 = add_stop!(gtfs, 35.9218, -78.8751, stop_name="RTP2", stop_id="rtp2")
 
     fayetteville = add_route!(gtfs, "Fayetteville", route_id="ftv")
     rtp_express = add_route!(gtfs, "RTP Express", route_id="rtpx")
@@ -73,8 +74,9 @@ end
         nccu = net.stopidx_for_id["$(gtfspath):nccu"]
         lowes = net.stopidx_for_id["$(gtfspath):lowes"]
         rtp = net.stopidx_for_id["$(gtfspath):rtp"]
+        rtp2 = net.stopidx_for_id["$(gtfspath):rtp2"]
         @testset "Stops" begin
-            @test length(net.stops) == 4
+            @test length(net.stops) == 5
             @test net.stops[downtown].stop_name == "Downtown"
             @test net.stops[downtown].stop_lat == 35.9932
             @test net.stops[downtown].stop_lon == -78.8975
@@ -215,6 +217,23 @@ end
             @test trip_2.stop_times[2].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 10))
             @test trip_2.stop_times[3].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 15))
             @test trip_2.stop_times[4].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 22))
+        end
+
+        @testset "Transfers" begin
+            @test length(collect(Iterators.flatten(net.transfers))) == 2
+            expected_distance = euclidean_distance(LatLon(35.9208, -78.8751), LatLon(35.9218, -78.8751))
+
+            @test length(net.transfers[rtp]) == 1
+            @test net.transfers[rtp][1].target_stop == rtp2
+            @test net.transfers[rtp][1].distance_meters ≈ expected_distance
+            @test net.transfers[rtp][1].duration_seconds ≈ expected_distance / TransitRouter.DEFAULT_WALK_SPEED_METERS_PER_SECOND
+            @test net.transfers[rtp][1].geometry == [LatLon(35.9208, -78.8751), LatLon(35.9218, -78.8751)]
+
+            @test length(net.transfers[rtp2]) == 1
+            @test net.transfers[rtp2][1].target_stop == rtp
+            @test net.transfers[rtp2][1].distance_meters ≈ expected_distance
+            @test net.transfers[rtp2][1].duration_seconds ≈ expected_distance / TransitRouter.DEFAULT_WALK_SPEED_METERS_PER_SECOND
+            @test net.transfers[rtp2][1].geometry == [LatLon(35.9218, -78.8751), LatLon(35.9208, -78.8751)]
         end
     end
 end
