@@ -164,7 +164,10 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
 
         # do transfers, but skip after last iteration
         if round < max_rides
-            times_at_stops[target, :] = non_transfer_times_at_stops[target, :]
+            # don't find transfers to stops that already have better transfers from previous rounds
+            # this should not affect routing results, as those transfers would not be optimal in the next
+            # round of transit routing, but better to stop it before it happens
+            times_at_stops[target, :] = min.(times_at_stops[target - 1, :], non_transfer_times_at_stops[target, :])
 
             # leave other things missing if there were no transfers
             for stop in touched_stops
