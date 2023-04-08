@@ -2,6 +2,6 @@ using Documenter, TransitRouter
 
 makedocs(sitename="TransitRouter.jl")
 
-if haskey(env, "CI")
+if haskey(ENV, "CI")
     deploydocs(repo="github.com/mattwigway/TransitRouter.jl")
 end
