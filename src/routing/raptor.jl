@@ -13,8 +13,58 @@ struct StopAndTime
     time::Int32
 end
 
+"""
+Contains the results of a RAPTOR search.
+
+## Fields
+
+- `times_at_stops_each_round[i, j]` is the earliest time stop j can be reached after round i, whether
+  directly via transit or via a transfer. Round 1 is only has the access stops and times, transit routing
+  first appears in round 2.
+
+  Times at stops are propagated forward, so a stop reached in round 2 will still be present with the same time
+  in round 3, unless a faster way has been found.
+
+- `non_transfer_times_at_stops_each_round[i, j]` is the earliest time stop j can be reached after round i,
+  directly via transit. Round 1 will be blank, as the access leg is considered a transfer, transit routing
+  first appears in round 2.
+
+  Non-transfer times at stops are propagated forward, so a stop reached in round 2 will still be present with the same time
+  in round 3, unless a faster way has been found.
+
+- `prev_stop[i, j]` is the stop where the passenger boarded the transit vehicle that delivered
+  them to stop j in round i. This only reflects stops reached via transit; if the stop was reached via
+  a transfer, the origin of the transfer will be stored in `transfer_prev_stop`. `transfer_prev_stop` and
+  `prev_stop` may differ, if the stop was reached via transit, but there is a faster way to reach it via a
+  transfer.
+
+  prev_stop will contain INT_MISSING for a stop not reached in round i, even if it was previously reached.
+
+- `transfer_prev_stop[i, j]` is the stop where the passenger alighted from transit vehicle in this round, and
+  then transferred to this stop. This only reflects stops reached via transfers; if the stop was reached via
+  transit directly, the origin will be stored in `rev_stop`. `transfer_prev_stop` and
+  `prev_stop` may differ, if the stop was reached via transit, but there is a faster way to reach it via a
+  transfer.
+
+  transfer_prev_stop will contain INT_MISSING for a stop not reached in round i, even if it was previously reached.
+
+-  `prev_trip[i, j]` is the trip index of the transit vehicle that delivered the passenger to stop j in round i. Like `prev_stop`,
+  always refers to stops reached via transit directly, not via transfers. To find the trip that brought a user to a transfer,
+  first look for the transfer origin in transfer_prev_stop, and then look at prev_trip for that stop.
+
+  Will contain INT_MISSING if stop j not reached in round i.
+
+- `prev_boardtime[i, j]` is the board time index of the transit vehicle that delivered the passenger to stop j in round i. Like `prev_stop`,
+  always refers to stops reached via transit directly, not via transfers. To find the trip that brought a user to a transfer,
+  first look for the transfer origin in transfer_prev_stop, and then look at prev_trip for that stop.
+
+  Will contain INT_MISSING if stop j not reached in round i.
+
+- `date` is the date of the request
+
+"""
 struct RaptorResult
-    times_at_stops_each_round::Array{Int32, 2}
+    times_at_stops_each_round::Array{Int32, 2} 
     non_transfer_times_at_stops_each_round::Array{Int32, 2}
     prev_stop::Array{Int64, 2}
     transfer_prev_stop::Matrix{Int64}
@@ -182,6 +232,13 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
                             # transferring to this stop is optimal!
                             times_at_stops[target, xfer.target_stop] = time_after_xfer
                             transfer_prev_stop[target, xfer.target_stop] = stop
+
+                            # note that we do _not_ update prev_boardtime, etc here because
+                            # those only represent stops reached via transit directly. If we did,
+                            # you could run into trouble if you had a scenario where a stop was reached
+                            # both via transit and quicker via a transfer, and a second transfer built
+                            # on the transit route, and another ride built on the transfer - there would
+                            # be no way to trace the trip back for the ride that arrived via transit.
                             push!(next_touched_stops, xfer.target_stop)
                         end
                     end
