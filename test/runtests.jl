@@ -1,4 +1,5 @@
 using Test, TransitRouter, Dates, CSV, ZipFile, Dates, Geodesy
+import TransitRouter: MAX_TIME, INT_MISSING
 
 include("mock_gtfs.jl")
 include("time-tests.jl")

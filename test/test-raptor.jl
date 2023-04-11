@@ -1,77 +1,6 @@
 # helper function for Gtfs Time
 gt = TransitRouter.time_to_seconds_since_midnight ∘ Time
 
-function check_stop(result, round, stopidx;
-    time=MAX_TIME,
-    non_transfer_time=MAX_TIME,
-    prev_stop=INT_MISSING,
-    prev_trip=INT_MISSING,
-    prev_boardtime=MAX_TIME,
-    transfer_prev_stop=INT_MISSING
-)
-    return result.times_at_stops_each_round[round, stopidx] == time &&
-        result.non_transfer_times_at_stops_each_round[round, stopidx] == non_transfer_time &&
-        result.prev_stop[round, stopidx] == prev_stop &&
-        result.prev_trip[round, stopidx] == prev_trip &&
-        result.prev_boardtime[round, stopidx] == prev_boardtime &&
-        result.transfer_prev_stop[round, stopidx] == transfer_prev_stop
-end
-
-# Julia macros "can't have keyword arguments", so the kwargs is actually a list
-# of expressions a=b which we manually parse as if they were kwargs
-# macro check_stop(result, round, stopidx, kwargs...)
-#     pairs = map(kwargs) do p
-#         @assert @capture(p, key_ = val_)
-#         # https://stackoverflow.com/questions/70007918
-#         return :($(QuoteNode(key)) => $val)
-#     end
-
-#     keys = map(kwargs) do p
-#         @assert @capture(p, key_ = val_)
-#         return QuoteNode(key)
-#     end
-
-#     return quote
-#         checks = Dict([$(esc.(pairs)...)])
-#         @assert all(keys(checks) .∈ Ref([:time, :non_transfer_time, :prev_stop, :prev_trip, :prev_boardtime, :transfer_prev_stop]))
-
-#         # Ouch, this is kinda complicated. Breaking it down:
-
-#         @test $(esc(result)).times_at_stops_each_round[$(esc(round)), $(esc(stopidx))] == $(:time ∈ keys ? :(checks[:time]) : :(TransitRouter.MAX_TIME))
-#         @test $(esc(result)).non_transfer_times_at_stops_each_round[$(esc(round)), $(esc(stopidx))] == $(:non_transfer_time ∈ keys ? :(checks[:non_transfer_time]) : :(TransitRouter.MAX_TIME))
-#         @test $(esc(result)).prev_stop[$(esc(round)), $(esc(stopidx))] == $(:prev_stop ∈ keys ? :(checks[:prev_stop]) : :(TransitRouter.INT_MISSING))
-#         @test $(esc(result)).prev_trip[$(esc(round)), $(esc(stopidx))] == $(:prev_trip ∈ keys ? :(checks[:prev_trip]) : :(TransitRouter.INT_MISSING))
-#         @test $(esc(result)).prev_boardtime[$(esc(round)), $(esc(stopidx))] == $(:prev_boardtime ∈ keys ? :(checks[:prev_boardtime]) : :(TransitRouter.INT_MISSING))
-#         @test $(esc(result)).transfer_prev_stop[$(esc(round)), $(esc(stopidx))] == $(:transfer_prev_stop ∈ keys ? :(checks[:transfer_prev_stop]) : :(TransitRouter.INT_MISSING))
-
-#         # @test $(esc(result)).times_at_stops_each_round[$(esc(round)), $(esc(stopidx))] == haskey(checks, :time) ? checks[:time] : MAX_TIME
-#         # @test $(esc(result)).non_transfer_times_at_stops_each_round[$(esc(round)), $(esc(stopidx))] == haskey(checks, :non_transfer_time) ? checks[:non_transfer_time] : MAX_TIME
-#         # @test $(esc(result)).prev_stop[$(esc(round)), $(esc(stopidx))] == haskey(checks, :prev_stop) ? checks[:prev_stop] : MAX_TIME
-#         # @test $(esc(result)).prev_trip[$(esc(round)), $(esc(stopidx))] == haskey(checks, :prev_trip) ? checks[:prev_trip] : MAX_TIME
-#         # @test $(esc(result)).prev_boardtime[$(esc(round)), $(esc(stopidx))] == haskey(checks, :prev_boardtime) ? checks[:prev_boardtime] : MAX_TIME
-#         # @test $(esc(result)).transfer_prev_stop[$(esc(round)), $(esc(stopidx))] == haskey(checks, :transfer_prev_stop) ? checks[:transfer_prev_stop] : MAX_TIME
-#     end
-# end
-
-    # return postwalk(ex) do expr
-    #     if @capture(expr, f_ == val_)
-    #         if f == :time
-    #             return :(@test $(esc(result)).times_at_stops_each_round[$(esc(round)), $(esc(stopidx))] == $(esc(val)))
-    #         elseif f == :non_transfer_time 
-    #             return :(@test $(esc(result)).non_transfer_times_at_stops_each_round[$(esc(round)), $(esc(stopidx))] == $(esc(val)))
-    #         elseif f == :prev_stop
-    #             return :(@test $(esc(result)).prev_stop[$(esc(round)), $(esc(stopidx))] == $(esc(val)))
-    #         elseif f == :prev_trip
-    #             return :(@test $(esc(result)).prev_trip[$(esc(round)), $(esc(stopidx))] == $(esc(val)))
-    #         elseif f == :prev_boardtime
-    #             return :(@test $(esc(result)).prev_boardtime[$(esc(round)), $(esc(stopidx))] == $(esc(val)))
-    #         elseif f == :transfer_prev_stop
-    #             return :(@test $(esc(result)).prev_boardtime[$()])
-    #         end
-    #     end
-    # end
-
-
 @testset "RAPTOR" begin
     # A network where there is a faster one-transfer route than the one seat ride that's also available
     @testset "Faster transfer" begin
@@ -379,7 +308,6 @@ end
         @test net.trips[res.prev_trip[4, s5]].stop_times[1].departure_time == gt(11, 30)
         @test res.prev_boardtime[4, s5] == gt(11, 30)
         @test res.transfer_prev_stop[4, s5] == INT_MISSING
-
     end
 end
 
