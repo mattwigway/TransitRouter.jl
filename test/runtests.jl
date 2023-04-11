@@ -1,4 +1,4 @@
-using Test, TransitRouter, Dates, CSV, ZipFile, Dates, Geodesy
+using Test, TransitRouter, Dates, CSV, ZipFile, Dates, Geodesy, Logging
 import TransitRouter: MAX_TIME, INT_MISSING
 
 include("mock_gtfs.jl")

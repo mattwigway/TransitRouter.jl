@@ -67,7 +67,9 @@ end
     gtfs = build_gtfs()
 
     with_gtfs(gtfs) do gtfspath
-        net::TransitNetwork = build_network([gtfspath])
+        net::TransitNetwork = with_logger(NullLogger()) do
+            build_network([gtfspath])
+        end
 
         # Check stops - four stops read, stop names and locations read correctly
         downtown = net.stopidx_for_id["$(gtfspath):dtn"]
@@ -135,7 +137,6 @@ end
 
             # should be two trips
             downtown_rtp_trips = map(x -> net.trips[x], net.trips_for_pattern[downtown_rtp[1]])
-            println(downtown_rtp_trips)
             
             @test length(downtown_rtp_trips) == 2
 
@@ -260,7 +261,9 @@ end
     ))
 
     with_gtfs(gtfs) do gtfspath
-        net = build_network([gtfspath])
+        net::TransitNetwork = with_logger(NullLogger()) do
+            build_network([gtfspath])
+        end
         @test length(net.trips) == 1
         trip = net.trips[1]
 
