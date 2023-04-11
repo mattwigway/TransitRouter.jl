@@ -206,8 +206,3 @@
         @test res.transfer_prev_stop[4, s5] == INT_MISSING
     end
 end
-
-
-
-# add testsets for: trip/service running, overnight routing, right trip selected when multiple on the pattern
-#  transfer and direct transit to same stop, with direct transit and transfer built on.

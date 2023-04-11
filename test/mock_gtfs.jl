@@ -57,24 +57,17 @@ struct MockGTFS
     calendar::Vector{GTFSCalendar}
     calendar_dates::Vector{GTFSCalendarDate}
     id_iterator::Any
+    lat_iterator::Any
+    lon_iterator::Any
 end
 
-MockGTFS() = MockGTFS(GTFSStop[], GTFSRoute[], GTFSTrip[], GTFSStopTime[], GTFSCalendar[], GTFSCalendarDate[], Iterators.Stateful(Iterators.countfrom(1)))
-# clone constructor, uses same objects but new vectors so that modifications don't affect
-# original.
-MockGTFS(o::MockGTFS) = MockGTFS(
-    copy(o.stops),
-    copy(o.routes),
-    copy(o.trips),
-    copy(o.stop_times),
-    copy(o.calendar),
-    copy(o.calendar_dates),
-    Iterators.Stateful(Iterators.countfrom(1))
-)
+MockGTFS() = MockGTFS(GTFSStop[], GTFSRoute[], GTFSTrip[], GTFSStopTime[], GTFSCalendar[], GTFSCalendarDate[], Iterators.Stateful(Iterators.countfrom(1)),
+    # Lat and lon iterators in southern and eastern hemisphere, to make sure there are no issues with sign of lat/lon
+    Iterators.Stateful(Iterators.countfrom(-27.4, 0.01)), Iterators.Stateful(Iterators.countfrom(153.0, 0.01)))
 
 nextid(o::MockGTFS) = string(popfirst!(o.id_iterator))
 
-function add_stop!(o::MockGTFS, stop_lat::Float64, stop_lon::Float64; stop_name="stop", stop_id=nextid(o))
+function add_stop!(o::MockGTFS, stop_lat::Float64=popfirst!(o.lat_iterator), stop_lon::Float64=popfirst!(o.lon_iterator); stop_name="stop", stop_id=nextid(o))
     push!(o.stops, GTFSStop((stop_id, stop_name, stop_lat, stop_lon)))
     return stop_id
 end
