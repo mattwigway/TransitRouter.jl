@@ -13,6 +13,7 @@ import OSRM: OSRMInstance, distance_matrix, route
 import Geodesy: LatLon, euclidean_distance
 import ArchGDAL
 import LibGEOS
+import ThreadsX
 
 include("constants.jl")
 include("model/model.jl")

@@ -163,7 +163,7 @@ function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_dista
     total_transfers = 0
     sizehint!(net.transfers, length(net.stops))
     # TODO find transfers in parallel
-    for stop in ProgressBar(net.stops)
+    transfers = ThreadsX.map(net.stops) do stop
         # find nearby stops
         # could use a spatial index if this is slow
         lat_diff = meters_to_degrees_lat(max_distance_meters)
@@ -195,8 +195,12 @@ function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_dista
             end
         end
 
-        total_transfers += length(xfers)
-        push!(net.transfers, xfers)
+        return xfers
+    end
+
+    for transfer in transfers
+        push!(net.transfers, transfer)
+        total_transfers += length(transfer)
     end
 
     @assert length(net.transfers) == length(net.stops)
