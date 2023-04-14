@@ -77,6 +77,7 @@ function find_trip_patterns!(net::TransitNetwork)
         for (tpidx, tp) in tp_hashes[hash]
             # short circuit and means vector equality won't be tested unless vectors are same length
             if ((tp.service == trip.service) && length(tp.stops) == length(stops) && all(tp.stops .== stops))
+                @assert !found_pattern "Found multiple matching patterns (internal error)"
                 found_pattern = true
                 new_trip = Trip(
                     trip.stop_times,
@@ -95,9 +96,19 @@ function find_trip_patterns!(net::TransitNetwork)
             push!(net.patterns, tp)
             tpidx = length(net.patterns)
             push!(tp_hashes[hash], (tpidx, tp))
+            
+            new_trip = Trip(
+                trip.stop_times,
+                trip.route,
+                trip.service,
+                tpidx,
+                trip.shape
+            )
+            push!(trips_with_patterns, new_trip)
         end
     end
 
+    @assert length(net.trips) == length(trips_with_patterns)
     # clear the entire trips array
     empty!(net.trips)
     append!(net.trips, trips_with_patterns)
@@ -126,7 +137,7 @@ function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real
             ), collect(enumerate(net.stops)))
 
         candidate_xfers = map(candidate_stops) do t
-            d = distance_meters(stop.stop_lat, stop.stop_lon, t[2].stop_lat, t[2].stop_lon)
+            d = euclidean_distance(LatLon(stop.stop_lat, stop.stop_lon), LatLon(t[2].stop_lat, t[2].stop_lon))
             geom = [
                 LatLon(stop.stop_lat, stop.stop_lon),
                 LatLon(t[2].stop_lat, t[2].stop_lon)
@@ -226,11 +237,9 @@ function _interpolate_segment_times(net::TransitNetwork, stop_times::Vector{Stop
     for i in 1:(length(stop_times) - 1)
         fr = net.stops[stop_times[i].stop]
         to = net.stops[stop_times[i + 1].stop]
-        push!(distances, distance_meters(
-            fr.stop_lat,
-            fr.stop_lon,
-            to.stop_lat,
-            to.stop_lon
+        push!(distances, euclidean_distance(
+            LatLon(fr.stop_lat, fr.stop_lon),
+            LatLon(to.stop_lat, to.stop_lon)
         ))
     end
 

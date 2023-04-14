@@ -47,16 +47,6 @@ function to_gdal(v::Vector{<:LatLon})
     return geom
 end
 
-function distance_meters(lat1::Real, lon1::Real, lat2::Real, lon2::Real)::Float64
-    lat_diff = abs(lat1 - lat2)
-    lat_diff_m = lat_diff * EARTH_CIRCUMFERENCE_METERS / 360
-
-    lon_diff = abs(lon1 - lon2)
-    lon_diff_m = lon_diff * cosd((lon1 + lon2) / 2) * EARTH_CIRCUMFERENCE_METERS / 360
-
-    return sqrt(lat_diff_m^2 + lon_diff_m^2)
-end
-
 # return the indices into destinations that are within the bbox continaing radius_meters around the origin
 function bbox_filter(origin::LatLon{T}, destinations::Vector{LatLon{T}}, max_dist_meters::Real)::Vector{Int64} where T <: Real
     max_lat_diff = meters_to_degrees_lat(max_dist_meters)
