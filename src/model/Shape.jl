@@ -82,7 +82,7 @@ function infer_shape_dist_traveled(shape, lat, lon)
     cumulative_projected_dist = 0.0
     prev_dist = 0.0
     prev, rest = Iterators.peel(coords)
-    for (prev_idx, pt) in rest
+    for (prev_idx, pt) in enumerate(rest)
         cumulative_projected_dist += sqrt((pt[1] - prev[1]) ^ 2 + (pt[2] - prev[2]) ^ 2)
         if cumulative_projected_dist ≥ projected_space_dist && prev_dist < projected_space_dist
             # we have found the segment, now find the fraction
