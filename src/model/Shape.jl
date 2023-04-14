@@ -67,13 +67,12 @@ end
 
 function infer_shape_dist_traveled(shape, lat, lon)
     # create the line string
-    firstpt = ArchGDAL.getpoint(shape.geom, 0)
-    coslat = cosd(firstpt[1])
+    firstpt = first(shape.geom)
+    coslat = cosd(firstpt.lat)
 
     # create the linestring
-    coords = map(0:(ArchGDAL.ngeom(shape.geom) - 1)) do idx
-        pt = ArchGDAL.getpoint(shape.geom, idx)
-        [pt[1] * coslat, pt[2]]
+    coords = map(shape.geom) do coord
+        [coord.lon * coslat, coord.lat]
     end
     geosgeom = LibGEOS.createLineString(coords)
 
