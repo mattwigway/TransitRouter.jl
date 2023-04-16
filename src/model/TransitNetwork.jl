@@ -128,13 +128,7 @@ function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real
         lon_diff = meters_to_degrees_lon(max_distance_meters, stop.stop_lat)
 
         # bbox query for nearby stops
-        candidate_stops = filter(t -> (
-            (t[2].stop_lat > stop.stop_lat - lat_diff) &&
-            (t[2].stop_lat < stop.stop_lat + lat_diff) &&
-            (t[2].stop_lon > stop.stop_lon - lon_diff) &&
-            (t[2].stop_lon < stop.stop_lon + lon_diff) &&
-            (t[2] !== stop)
-            ), collect(enumerate(net.stops)))
+        candidate_stops = findall()
 
         candidate_xfers = map(candidate_stops) do t
             d = euclidean_distance(LatLon(stop.stop_lat, stop.stop_lon), LatLon(t[2].stop_lat, t[2].stop_lon))
@@ -161,40 +155,47 @@ end
 function find_transfers_osrm!(net::TransitNetwork, osrm::OSRMInstance, max_distance_meters::Real)
     empty!(net.transfers)
     total_transfers = 0
-    sizehint!(net.transfers, length(net.stops))
-    # TODO find transfers in parallel
-    transfers = ThreadsX.map(net.stops) do stop
-        # find nearby stops
-        # could use a spatial index if this is slow
-        lat_diff = meters_to_degrees_lat(max_distance_meters)
-        lon_diff = meters_to_degrees_lon(max_distance_meters, stop.stop_lat)
 
+    # first, find all candidate transfers. We'll repeat the routing with each one to get a geometry.
+    stoplocs = map(s -> LatLon(s.stop_lat, s.stop_lon), net.stops)
+    @info "..Finding crow-flies stop-to-stop distances"
+    # initialize the diagonal to true, everything else will be overwritten
+    # also, if somehow we mess up below and it's not, we'll still get the right transfers
+    # because we'll check for transfers that don't exist, rather than not checking for transfers that do
+    stop_to_stop_possible = ones(Bool, (length(stoplocs), length(stoplocs)))
+    Threads.@threads for i in ProgressBar(1:length(stoplocs)) # normally frowned upon to index arrays like this but we controls stops/stoplocs
+        for j in (i + 1):length(stoplocs)
+            dist = euclidean_distance(stoplocs[i], stoplocs[j]) ≤ max_distance_meters
+            stop_to_stop_possible[i, j] = dist
+            stop_to_stop_possible[j, i] = dist
+        end
+    end
+
+    @info "..Finding stop-to-stop geometries"
+    p = ProgressBar(total=length(net.stops))
+    transfers = ThreadsX.map(collect(enumerate(net.stops))) do (stopidx, stop)
         # bbox query for nearby stops
-        candidate_stops = collect(filter(t -> (
-            (t[2].stop_lat > stop.stop_lat - lat_diff) &&
-            (t[2].stop_lat < stop.stop_lat + lat_diff) &&
-            (t[2].stop_lon > stop.stop_lon - lon_diff) &&
-            (t[2].stop_lon < stop.stop_lon + lon_diff) &&
-            (t[2] !== stop)
-            ), collect(enumerate(net.stops))))
-
-        # destinations has same order as candidate_stops
+        candidate_stops = findall(stop_to_stop_possible[stopidx, :])
 
         xfers = Vector{Transfer}()
 
-        for (dest_stopidx, dest_stop) in candidate_stops
-            # convert the index in destinations back to the index in net.stops
-            rs = route(osrm, LatLon(stop.stop_lat, stop.stop_lon), LatLon(dest_stop.stop_lat, dest_stop.stop_lon))
-            if isempty(rs)
+        for dest_stopidx in candidate_stops
+            if dest_stopidx == stopidx
                 continue
             end
+            
+            dest_stop = net.stops[dest_stopidx]
+            # convert the index in destinations back to the index in net.stops
+            rs = route(osrm, LatLon(stop.stop_lat, stop.stop_lon), LatLon(dest_stop.stop_lat, dest_stop.stop_lon))
             rt = first(rs)
 
-            if rt.distance_meters < max_distance_meters
+            if rt.distance_meters ≤ max_distance_meters
                 push!(xfers, Transfer(dest_stopidx, rt.distance_meters, rt.duration_seconds, rt.geometry))
             end
         end
 
+        # update is threadsafe, I checked
+        update(p)
         return xfers
     end
 

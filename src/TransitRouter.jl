@@ -3,7 +3,7 @@ module TransitRouter
 import Dates
 import Dates: Date, Time, DateTime
 import Serialization: serialize, deserialize
-import ProgressBars: ProgressBar
+import ProgressBars: ProgressBar, update
 import ZipFile
 import CSV
 import DataFrames: DataFrame, rename!, nrow, groupby, select!, Not
