@@ -120,30 +120,36 @@ end
 function find_transfers_distance!(net::TransitNetwork, max_distance_meters::Real)
     empty!(net.transfers)
     total_transfers = 0
-    sizehint!(net.transfers, length(net.stops))
-    for stop in net.stops
-        # find nearby stops
-        # could use a spatial index if this is slow
-        lat_diff = meters_to_degrees_lat(max_distance_meters)
-        lon_diff = meters_to_degrees_lon(max_distance_meters, stop.stop_lat)
 
-        # bbox query for nearby stops
-        candidate_stops = findall()
-
-        candidate_xfers = map(candidate_stops) do t
-            d = euclidean_distance(LatLon(stop.stop_lat, stop.stop_lon), LatLon(t[2].stop_lat, t[2].stop_lon))
-            geom = [
-                LatLon(stop.stop_lat, stop.stop_lon),
-                LatLon(t[2].stop_lat, t[2].stop_lon)
-            ]
-            # TODO make walk speed configurable
-            Transfer(t[1], d, d / DEFAULT_WALK_SPEED_METERS_PER_SECOND, geom)
+    # first, find all candidate transfers. We'll repeat the routing with each one to get a geometry.
+    stoplocs = map(s -> LatLon(s.stop_lat, s.stop_lon), net.stops)
+    @info "..Finding crow-flies stop-to-stop distances"
+    # initialize the diagonal to true, everything else will be overwritten
+    # also, if somehow we mess up below and it's not, we'll still get the right transfers
+    # because we'll check for transfers that don't exist, rather than not checking for transfers that do
+    stop_to_stop_dists = ones(Float64, (length(stoplocs), length(stoplocs)))
+    Threads.@threads for i in ProgressBar(1:length(stoplocs)) # normally frowned upon to index arrays like this but we controls stops/stoplocs
+        for j in (i + 1):length(stoplocs)
+            dist = euclidean_distance(stoplocs[i], stoplocs[j])
+            stop_to_stop_dists[i, j] = dist
+            stop_to_stop_dists[j, i] = dist
         end
+    end
 
-        # some overselection possible in corners of bbox
-        xfers = filter(xfer -> xfer.distance_meters <= max_distance_meters, candidate_xfers)
-        total_transfers += length(xfers)
-        push!(net.transfers, xfers)
+    for i in 1:length(net.stops)
+        istop = net.stops[i]
+        stop_transfers = Transfer[]
+        for j in 1:length(net.stops)
+            if i != j && stop_to_stop_dists[i, j] ≤ max_distance_meters
+                jstop = net.stops[j]
+                push!(stop_transfers, Transfer(j, stop_to_stop_dists[i, j], stop_to_stop_dists[i, j] / DEFAULT_WALK_SPEED_METERS_PER_SECOND, [
+                    LatLon(istop.stop_lat, istop.stop_lon),
+                    LatLon(jstop.stop_lat, jstop.stop_lon)
+                ]))
+                total_transfers += 1
+            end
+        end
+        push!(net.transfers, stop_transfers)
     end
 
     @assert length(net.transfers) == length(net.stops)
