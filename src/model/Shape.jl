@@ -31,7 +31,11 @@ function geom_between(shape::Shape, net, st1, st2)
 
     # first stop location (let's hope it's on the shape...)
     first_stop = net.stops[st1.stop]
-    push!(geom, LatLon(first_stop.stop_lat, first_stop.stop_lon))
+    first_stop_ll = LatLon(first_stop.stop_lat, first_stop.stop_lon)
+    # avoid duplicates, don't add it if the point is in the shape
+    if !(first_stop_ll ≈ shape.geom[first_offset])
+        push!(geom, first_stop_ll)
+    end
 
     # intermediate shape locations
     for ptidx in first_offset:last_offset
@@ -41,7 +45,10 @@ function geom_between(shape::Shape, net, st1, st2)
 
     # last stop location
     last_stop = net.stops[st2.stop]
-    push!(geom, LatLon(last_stop.stop_lat, last_stop.stop_lon))
+    last_stop_ll = LatLon(last_stop.stop_lat, last_stop.stop_lon)
+    if !(last_stop_ll ≈ last(geom))
+        push!(geom, last_stop_ll)
+    end
 
     if reversed
         reverse!(geom)

@@ -83,7 +83,7 @@
         # stop 1 to 3
         @test TransitRouter.geom_between(shape, net, trip.stop_times[1], trip.stop_times[3]) == [
             LatLon(44.904799, -93.287731),
-            LatLon(44.904921, -93.287731),
+            LatLon(44.904921, -93.287731), # s2
             LatLon(44.905089, -93.287733),
             LatLon(44.905096, -93.287119),
             LatLon(44.905097, -93.287028),
@@ -94,7 +94,6 @@
 
         # stop 2 to 3
         @test TransitRouter.geom_between(shape, net, trip.stop_times[2], trip.stop_times[3]) == [
-            LatLon(44.904921, -93.287731), # appears twice because once from stop, once from shape
             LatLon(44.904921, -93.287731),
             LatLon(44.905089, -93.287733),
             LatLon(44.905096, -93.287119),
@@ -115,14 +114,12 @@
             LatLon(44.905062, -93.285239),
             LatLon(44.905053, -93.28518),
             LatLon(44.904985, -93.284792),
-            LatLon(44.904936, -93.284481),
             LatLon(44.904936, -93.284481)
         ]
 
         # stop 4 to 5
         @test TransitRouter.geom_between(shape, net, trip.stop_times[4], trip.stop_times[5]) == [
             LatLon(44.904936, -93.284481), # s4
-            LatLon(44.904936, -93.284481),
             LatLon(44.904736, -93.283199),
             LatLon(44.90463, -93.282609),
             LatLon(44.904522, -93.281868),
@@ -134,14 +131,12 @@
             LatLon(44.904057, -93.278702),
             LatLon(44.903988, -93.278235),
             LatLon(44.903966, -93.278086),
-            LatLon(44.903869, -93.278087),
             LatLon(44.903869, -93.278087)
         ]
 
         # stop 4 to 6 (same except for stop 6 coordinate)
         @test TransitRouter.geom_between(shape, net, trip.stop_times[4], trip.stop_times[6]) == [
             LatLon(44.904936, -93.284481), # s4
-            LatLon(44.904936, -93.284481),
             LatLon(44.904736, -93.283199),
             LatLon(44.90463, -93.282609),
             LatLon(44.904522, -93.281868),
@@ -161,12 +156,10 @@
         # stop 1 to 2
         @test TransitRouter.geom_between(shape, net, trip.stop_times[1], trip.stop_times[2]) == [
             LatLon(44.904799, -93.287731),
-            LatLon(44.904921, -93.287731),
             LatLon(44.904921, -93.287731)
         ]
 
         @test TransitRouter.geom_between(shape, net, trip.stop_times[5], trip.stop_times[6]) == [
-            LatLon(44.903869, -93.278087),
             LatLon(44.903869, -93.278087),
             LatLon(44.903783, -93.278087)
         ]
