@@ -67,8 +67,8 @@ end
 
 "Return a stop-based geometry when there are no shapes"
 function stop_to_stop_geom(trip, net, st1, st2)
-    st1idx = findfirst(trip.stop_times .== st1)
-    st2idx = findfirst(trip.stop_times .== st2)
+    st1idx = findfirst(trip.stop_times .== Ref(st1))
+    st2idx = findfirst(trip.stop_times .== Ref(st2))
     !isnothing(st1idx) && !isnothing(st2idx) || error("Stop time not found in trip!")
     geom = LatLon{Float64}[]
     for stop_time in trip.stop_times[st1idx:st2idx]

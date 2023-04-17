@@ -164,5 +164,15 @@
             LatLon(44.903783, -93.278087)
         ]
 
+        # stop to stop geometries should also work
+        @test TransitRouter.stop_to_stop_geom(trip, net, trip.stop_times[1], trip.stop_times[6]) == [
+            LatLon(44.904799, -93.287731), # before start
+            LatLon(44.904921, -93.287731), # at start
+            LatLon(44.905106, -93.285758), # middle, not on point
+            LatLon(44.904936, -93.284481), # middle, on point
+            LatLon(44.903869, -93.278087), # at end
+            LatLon(44.903783, -93.278087) # past end
+        ]
+
     end
 end
