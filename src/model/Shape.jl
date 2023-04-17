@@ -17,7 +17,14 @@ function geom_between(shape::Shape, net, st1, st2)
 
     # find first point
     first_offset = findfirst(shape.shape_dist_traveled .≥ st1.shape_dist_traveled)
-    last_offset = findfirst(shape.shape_dist_traveled .> st2.shape_dist_traveled) - 1
+    last_offset = findfirst(shape.shape_dist_traveled .> st2.shape_dist_traveled)
+
+    # handle stops at or past the final point of the shape
+    if !isnothing(last_offset)
+        last_offset -= 1
+    else
+        last_offset = lastindex(shape.shape_dist_traveled)
+    end
 
     # make the geometry
     geom = LatLon{Float64}[]
@@ -78,13 +85,18 @@ function infer_shape_dist_traveled(shape, lat, lon)
 
     projected_space_dist = LibGEOS.project(geosgeom, LibGEOS.createPoint(lon * coslat, lat))
 
+    # short circuit here in case it's a little less than 0
+    if projected_space_dist ≈ 0.0
+        return first(shape.shape_dist_traveled)
+    end
+
     # figure out where it is on the line
     cumulative_projected_dist = 0.0
     prev_dist = 0.0
     prev, rest = Iterators.peel(coords)
     for (prev_idx, pt) in enumerate(rest)
         cumulative_projected_dist += sqrt((pt[1] - prev[1]) ^ 2 + (pt[2] - prev[2]) ^ 2)
-        if cumulative_projected_dist ≥ projected_space_dist && prev_dist < projected_space_dist
+        if cumulative_projected_dist ≥ projected_space_dist && prev_dist ≤ projected_space_dist
             # we have found the segment, now find the fraction
             frac = (projected_space_dist - prev_dist) / (cumulative_projected_dist - prev_dist)
             return shape.shape_dist_traveled[prev_idx] + frac * (shape.shape_dist_traveled[prev_idx + 1] - shape.shape_dist_traveled[prev_idx])
@@ -92,4 +104,8 @@ function infer_shape_dist_traveled(shape, lat, lon)
         prev = pt
         prev_dist = cumulative_projected_dist
     end
+
+    # handle stop at/past end of shape
+    return cumulative_projected_dist
+
 end

@@ -19,7 +19,8 @@ const GTFSRoute = @NamedTuple{
 const GTFSTrip = @NamedTuple{
     trip_id::String,
     route_id::String,
-    service_id::String
+    service_id::String,
+    shape_id::Union{Missing, String}
 }
 
 const GTFSStopTime = @NamedTuple{
@@ -49,6 +50,13 @@ const GTFSCalendarDate = @NamedTuple{
     exception_type::Int8
 }
 
+const GTFSShape = @NamedTuple{
+    shape_id::String,
+    shape_pt_lats::Vector{Float64},
+    shape_pt_lons::Vector{Float64},
+    shape_dist_traveled::Union{Vector{Float64}, Nothing}
+}
+
 struct MockGTFS
     stops::Vector{GTFSStop}
     routes::Vector{GTFSRoute}
@@ -56,12 +64,13 @@ struct MockGTFS
     stop_times::Vector{GTFSStopTime}
     calendar::Vector{GTFSCalendar}
     calendar_dates::Vector{GTFSCalendarDate}
+    shapes::Vector{GTFSShape}
     id_iterator::Any
     lat_iterator::Any
     lon_iterator::Any
 end
 
-MockGTFS() = MockGTFS(GTFSStop[], GTFSRoute[], GTFSTrip[], GTFSStopTime[], GTFSCalendar[], GTFSCalendarDate[], Iterators.Stateful(Iterators.countfrom(1)),
+MockGTFS() = MockGTFS(GTFSStop[], GTFSRoute[], GTFSTrip[], GTFSStopTime[], GTFSCalendar[], GTFSCalendarDate[], GTFSShape[], Iterators.Stateful(Iterators.countfrom(1)),
     # Lat and lon iterators in southern and eastern hemisphere, to make sure there are no issues with sign of lat/lon
     Iterators.Stateful(Iterators.countfrom(-27.4, 0.01)), Iterators.Stateful(Iterators.countfrom(153.0, 0.01)))
 
@@ -115,8 +124,8 @@ end
 
 # add a trip on the specified route with the specified stops
 # stops_and_times is a vector of tuple (stop_id, stop_time) or (stop_id, arrival_time, departure_time)
-function add_trip!(o::MockGTFS, route_id, service_id, stops_and_times; trip_id=nextid(o))
-    push!(o.trips, GTFSTrip((trip_id, route_id, service_id)))
+function add_trip!(o::MockGTFS, route_id, service_id, stops_and_times; shape_id=missing, trip_id=nextid(o))
+    push!(o.trips, GTFSTrip((trip_id, route_id, service_id, shape_id)))
 
     stop_seq = 1
     for stop_and_time in stops_and_times
@@ -133,6 +142,16 @@ function add_trip!(o::MockGTFS, route_id, service_id, stops_and_times; trip_id=n
         stop_seq *= 2
     end
     return trip_id
+end
+
+add_shape!(o::MockGTFS, latlons::AbstractVector{<:LatLon{<:Any}}; shape_dist_traveled=nothing, shape_id=nextid(o)) =
+    add_shape!(o, [x.lat for x in latlons], [x.lon for x in latlons], shape_dist_traveled=shape_dist_traveled, shape_id=shape_id)
+
+function add_shape!(o::MockGTFS, lat, lon; shape_dist_traveled=nothing, shape_id=nextid(o))
+    length(lat) == length(lon) || error("Differing numbers of latitudes and longitudes!")
+    isnothing(shape_dist_traveled) || length(shape_dist_traveled) == length(lat) || error("Differing number of shape_dist_traveled vs lat/lon")
+    push!(o.shapes, GTFSShape((shape_id, lat, lon, shape_dist_traveled)))
+    return shape_id
 end
 
 # run function f with the first argument specifying the path to GTFS file
@@ -160,6 +179,30 @@ function with_gtfs(func, o::MockGTFS)
         if !isempty(o.calendar_dates)
             f = ZipFile.addfile(w, "calendar_dates.txt")
             CSV.write(f, o.calendar_dates)
+        end
+
+        if !isempty(o.shapes)
+            f = ZipFile.addfile(w, "shapes.txt")
+            has_shp_dist_trv = any([!isnothing(s.shape_dist_traveled) for s in o.shapes])
+
+            shapeit = Iterators.flatten(map(o.shapes) do shape
+                if has_shp_dist_trv
+                    if !isnothing(shape.shape_dist_traveled)
+                        [(shape_id=shape.shape_id, shape_pt_lat=z[1], shape_pt_lon=z[2], shape_dist_traveled=z[3], shape_pt_sequence=z[4])
+                            for z in zip(shape.shape_pt_lats, shape.shape_pt_lons, shape.shape_dist_traveled, eachindex(shape.shape_pt_lats))]
+                    else
+                        # leave column blank
+                        [(shape_id=shape.shape_id, shape_pt_lat=z[1], shape_pt_lon=z[2], shape_dist_traveled=missing, shape_pt_sequence=z[3])
+                            for z in zip(shape.shape_pt_lats, shape.shape_pt_lons, eachindex(shape.shape_pt_lats))]
+                    end
+                else
+                    # no column at all
+                    [(shape_id=shape.shape_id, shape_pt_lat=z[1], shape_pt_lon=z[2], shape_pt_sequence=z[3])
+                        for z in zip(shape.shape_pt_lats, shape.shape_pt_lons, eachindex(shape.shape_pt_lats))]
+                end
+            end)
+
+            CSV.write(f, shapeit)
         end
 
         close(w)
