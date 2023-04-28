@@ -35,3 +35,4 @@ include("raptor/test-local-express.jl")
 #  different arrival/departure times
 #  DST
 #  max_rides
+#  Both-direction trips
