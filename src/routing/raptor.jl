@@ -120,13 +120,15 @@ function raptor(
 
     # get which service idxes are running
     services_running = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date), collect(enumerate(net.services)))))
+    services_running_tomorrow = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date + Day(1)), collect(enumerate(net.services)))))
+
 
     @debug "$(length(services_running)) services running on requested date"
 
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
     # a bounded bitset implementation that did not dynamically resize.
     run_raptor!(net, times_at_stops, non_transfer_times_at_stops, prev_stop, transfer_stop, prev_trip, prev_boardtime, walk_speed_meters_per_second,
-        max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
+        max_transfer_distance_meters, max_rides, services_running, services_running_tomorrow, prev_touched_stops, touched_stops)
 
     return RaptorResult(
         times_at_stops,
@@ -140,7 +142,8 @@ function raptor(
 end
 
 function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_transfer_times_at_stops::Array{Int32, 2}, prev_stop::Array{Int64, 2}, transfer_prev_stop,
-    prev_trip::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running::BitSet, prev_touched_stops::BitSet, touched_stops::BitSet)
+    prev_trip::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides,
+    services_running::BitSet, services_running_tomorrow::BitSet, prev_touched_stops::BitSet, touched_stops::BitSet)
     for round in 1:max_rides
         # where the results of this round will be recorded
         target = round + 1
@@ -151,58 +154,74 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
         for stop in prev_touched_stops
             # find all patterns that touch this stop
             for patidx in net.patterns_for_stop[stop]
+
+                # explore patterns twice, once for today and once for tomorrow
                 tp = net.patterns[patidx]
 
-                if !in(tp.service, services_running)
-                    continue
-                end
-
-                # TODO handle loop trips
-                stoppos = INT_MISSING
-
-                # not using a vectorized findfirst to avoid allocations
-                for (i, tpstop) in enumerate(tp.stops)
-                    if tpstop == stop
-                        stoppos = i
-                        break
+                for day in (:today, :tomorrow)
+                    if day == :today && tp.service ∉ services_running
+                        continue
+                    elseif day == :tomorrow && tp.service ∉ services_running_tomorrow
+                        continue
                     end
-                end
 
-                @assert stoppos != INT_MISSING
+                    stop_time_offset = day == :today ? 0 : SECONDS_PER_DAY
 
-                # find the trip that departs at or after the earliest possible departure
-                # use times_at_stops; allow transfers
-                earliest_departure::Int32 = times_at_stops[target - 1, stop] + BOARD_SLACK_SECONDS
-                best_departure::Int32 = MAX_TIME
-                best_trip_idx::Int64 = INT_MISSING
+                    # TODO handle loop trips
+                    stoppos = INT_MISSING
 
-                for tripidx in net.trips_for_pattern[patidx]
-                    trip = net.trips[tripidx]
-                    time_at_stop = trip.stop_times[stoppos].departure_time
-                    if (time_at_stop >= earliest_departure && time_at_stop < best_departure)
-                        best_trip_idx = tripidx
-                        best_departure = time_at_stop
-                        # pre-sorting trips by departure time would allow us to break here, but I think we found in R5 that it didn't really help
+                    # not using a vectorized findfirst to avoid allocations
+                    for (i, tpstop) in enumerate(tp.stops)
+                        if tpstop == stop
+                            stoppos = i
+                            break
+                        end
                     end
-                end
 
-                if best_trip_idx == INT_MISSING
-                    continue  # no possible trip to board
-                end
+                    @assert stoppos != INT_MISSING
 
-                best_trip = net.trips[best_trip_idx]
+                    # find the trip that departs at or after the earliest possible departure
+                    # use times_at_stops; allow transfers
+                    earliest_departure::Int32 = times_at_stops[target - 1, stop] + BOARD_SLACK_SECONDS
+                    best_departure::Int32 = MAX_TIME
+                    best_trip_idx::Int64 = INT_MISSING
 
-                for stidx in stoppos + 1:length(best_trip.stop_times)
-                    stop_time = best_trip.stop_times[stidx]
-                    if stop_time.arrival_time < non_transfer_times_at_stops[target, stop_time.stop]
-                        # we have found a new fastest way to get to this stop!
-                        non_transfer_times_at_stops[target, stop_time.stop] = stop_time.arrival_time
-                        prev_stop[target, stop_time.stop] = stop
-                        prev_trip[target, stop_time.stop] = best_trip_idx
-                        prev_boardtime[target, stop_time.stop] = best_trip.stop_times[stoppos].departure_time
-                        push!(touched_stops, stop_time.stop)
+                    for tripidx in net.trips_for_pattern[patidx]
+                        trip = net.trips[tripidx]
+                        time_at_stop = trip.stop_times[stoppos].departure_time + stop_time_offset
+                        if (time_at_stop >= earliest_departure && time_at_stop < best_departure)
+                            best_trip_idx = tripidx
+                            best_departure = time_at_stop
+                            # pre-sorting trips by departure time would allow us to break here, but I think we found in R5 that it didn't really help
+                        end
                     end
-                end
+
+                    if best_trip_idx == INT_MISSING
+                        continue  # no possible trip to board
+                    end
+
+                    best_trip = net.trips[best_trip_idx]
+
+                    for stidx in stoppos + 1:length(best_trip.stop_times)
+                        stop_time = best_trip.stop_times[stidx]
+                        if stop_time.arrival_time + stop_time_offset < non_transfer_times_at_stops[target, stop_time.stop]
+                            # we have found a new fastest way to get to this stop!
+                            non_transfer_times_at_stops[target, stop_time.stop] = stop_time.arrival_time + stop_time_offset
+                            prev_stop[target, stop_time.stop] = stop
+                            prev_trip[target, stop_time.stop] = best_trip_idx
+                            prev_boardtime[target, stop_time.stop] = best_trip.stop_times[stoppos].departure_time + stop_time_offset
+                            push!(touched_stops, stop_time.stop)
+                        end
+                    end
+
+                    # possible optimization: if we rode the pattern today, don't check for tomorrow
+                    # might need to add some checks to make sure that services are non-overlapping
+                    # i.e. there isn't a service from today that starts at 24:30 after the 00:10 service
+                    # tomorrow starts. Checking that the hours are always >= 0 and every trip has a first
+                    # departure time < 24 would be mostly sufficient - overtaking trips notwithstanding
+                    # but that would cut computation roughly in half, so we might be okay with overtaking trips
+                    # not working across service days.
+                end # today/tomorrow loop
             end
         end # loop over prev_touched_stop
 

@@ -1,7 +1,18 @@
 # helper function for Gtfs Time
-const gt = TransitRouter.time_to_seconds_since_midnight ∘ Time
 const MT = TransitRouter.MAX_TIME
 const IM = TransitRouter.INT_MISSING
+
+function gt(h, m)
+    offset = 0
+    # handle overnight routing - Time() cannot accept hours over 24, but GTFS of course can
+    while h >= 24
+        h -= 24
+        offset += 24 * 60 * 60
+    end
+
+    return offset + TransitRouter.time_to_seconds_since_midnight(Time(h, m))
+end
+
 
 get_route(trip, net) = trip == INT_MISSING ? INT_MISSING : net.trips[trip].route
 
@@ -24,6 +35,7 @@ end
 include("raptor/test-faster-transfer.jl")
 include("raptor/test-transfers.jl")
 include("raptor/test-service-running.jl")
+include("raptor/test-overnight.jl")
 include("raptor/test-transfer-and-direct.jl")
 include("raptor/test-local-express.jl")
 
