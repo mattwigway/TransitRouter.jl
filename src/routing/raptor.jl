@@ -7,6 +7,7 @@ const INT_MISSING = -2
 const ORIGIN = -3
 const BOARD_SLACK_SECONDS = 60
 const EMPTY_SET = BitSet()
+const OFFSETS = (yesterday=-SECONDS_PER_DAY, today=0, tomorrow=SECONDS_PER_DAY)
 
 struct StopAndTime
     stop::Int64
@@ -118,9 +119,12 @@ function raptor(
     @assert prev_touched_stops.offset == 0
     @assert touched_stops.offset == 0
 
-    # get which service idxes are running
-    services_running = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date), collect(enumerate(net.services)))))
-    services_running_tomorrow = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date + Day(1)), collect(enumerate(net.services)))))
+    # get which service idxes are running (for yesterday today and tomorrow to account for overnight routing)
+    services_running = (
+        yesterday = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date - Day(1)), collect(enumerate(net.services))))),
+        today=BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date), collect(enumerate(net.services))))),
+        tomorrow = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date + Day(1)), collect(enumerate(net.services)))))
+    )
 
 
     @debug "$(length(services_running)) services running on requested date"
@@ -128,7 +132,7 @@ function raptor(
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
     # a bounded bitset implementation that did not dynamically resize.
     run_raptor!(net, times_at_stops, non_transfer_times_at_stops, prev_stop, transfer_stop, prev_trip, prev_boardtime, walk_speed_meters_per_second,
-        max_transfer_distance_meters, max_rides, services_running, services_running_tomorrow, prev_touched_stops, touched_stops)
+        max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
 
     return RaptorResult(
         times_at_stops,
@@ -143,7 +147,7 @@ end
 
 function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_transfer_times_at_stops::Array{Int32, 2}, prev_stop::Array{Int64, 2}, transfer_prev_stop,
     prev_trip::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides,
-    services_running::BitSet, services_running_tomorrow::BitSet, prev_touched_stops::BitSet, touched_stops::BitSet)
+    services_running, prev_touched_stops::BitSet, touched_stops::BitSet)
     for round in 1:max_rides
         # where the results of this round will be recorded
         target = round + 1
@@ -153,19 +157,21 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
 
         for stop in prev_touched_stops
             # find all patterns that touch this stop
+            # optimization: mark patterns, then loop over patterns instead of stops
             for patidx in net.patterns_for_stop[stop]
 
                 # explore patterns twice, once for today and once for tomorrow
                 tp = net.patterns[patidx]
 
-                for day in (:today, :tomorrow)
-                    if day == :today && tp.service ∉ services_running
-                        continue
-                    elseif day == :tomorrow && tp.service ∉ services_running_tomorrow
+                for day in (:yesterday, :today, :tomorrow)
+                    if tp.service ∉ services_running[day]
                         continue
                     end
 
-                    stop_time_offset = day == :today ? 0 : SECONDS_PER_DAY
+                    stop_time_offset = OFFSETS[day]
+
+                    # possible optimization: skip trip patterns that don't run after departure time
+                    # (most patterns from yesterday will get skipped)
 
                     # TODO handle loop trips
                     stoppos = INT_MISSING

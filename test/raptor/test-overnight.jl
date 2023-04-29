@@ -67,6 +67,37 @@
 
             test_no_updates_after_round(res, 3)
         end
+
+        @testset "Wednesday morning" begin
+            # start right at midnight, to ensure that doesn't cause any issues
+            res = raptor(net, [StopAndTime(2, gt(0, 0))], Date(2023, 5, 3))
+
+            # round 1: access
+            @test res.times_at_stops_each_round[1, :] == [MT, gt(0, 0), MT, MT]
+            @test res.non_transfer_times_at_stops_each_round[1, :] == fill(MT, 4)
+            @test res.prev_trip[1, :] == fill(IM, 4)
+            @test res.prev_stop[1, :] == fill(IM, 4)
+            @test res.prev_boardtime[1, :] == fill(IM, 4)
+            @test res.transfer_prev_stop[1, :] == fill(IM, 4)
+
+            # round 2: rode route A (from previous service day)
+            @test res.times_at_stops_each_round[2, :] == [MT, gt(0, 0), gt(0, 30), MT]
+            @test res.non_transfer_times_at_stops_each_round[2, :] == [MT, MT, gt(0, 30), MT]
+            @test res.prev_trip[2, :] == [IM, IM, 1, IM]
+            @test res.prev_stop[2, :] == [IM, IM, 2, IM]
+            @test res.prev_boardtime[2, :] == [IM, IM, gt(0, 20), IM]
+            @test res.transfer_prev_stop[2, :] == fill(IM, 4)
+
+            # round 3: rode route B (from today)
+            @test res.times_at_stops_each_round[3, :] == [MT, gt(0, 0), gt(0, 30), gt(0, 40)]
+            @test res.non_transfer_times_at_stops_each_round[3, :] == [MT, MT, gt(0, 30), gt(0, 40)]
+            @test res.prev_stop[3, :] == [IM, IM, IM, 3]
+            @test res.prev_trip[3, :] == [IM, IM, IM, 2]
+            @test res.prev_boardtime[3, :] == [IM, IM, IM, gt(0, 35)]
+            @test res.transfer_prev_stop[3, :] == fill(IM, 4)
+
+            test_no_updates_after_round(res, 3)
+        end
     end
 
 
