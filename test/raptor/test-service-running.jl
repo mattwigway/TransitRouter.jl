@@ -7,7 +7,7 @@
 
 # This test is currently broken due to the implementation of overnight routing.
 # plaes where we expect to not find a route, we find a route that involves waiting until tomorrow.
-@test_broken @testset "RAPTOR service running" begin
+@testset "RAPTOR service running" begin
     gtfs = MockGTFS()
     sids = [add_stop!(gtfs) for i in 1:3]
     rids = [add_route!(gtfs) for i in 1:3]
@@ -15,6 +15,7 @@
     every_day = add_service!(gtfs, 20230101, 20231231)
     weekdays_only = add_service!(gtfs, 20230101, 20231231, sunday=0, saturday=0, exceptions=(
         (20230704, 2), # no service July 4
+        (20230705, 2), # no service July 5 (so we don't get tripped up by overnight routing letting the July 4 trips wait for July 5)
         (20230408, 1) # but it does run April 8 (Saturday)
     ))
 
@@ -42,7 +43,7 @@
         ra, rb, rc = getindex.(Ref(net.routeidx_for_id), ["$path:$r" for r in rids])
 
         weekday_result = raptor(net, [StopAndTime(s1, gt(7, 55))], Date(2023, 4, 7))
-        weekend_result = raptor(net, [StopAndTime(s1, gt(7, 55))], Date(2023, 4, 9))
+        weekend_result = raptor(net, [StopAndTime(s1, gt(7, 55))], Date(2023, 4, 1))
         added_weekend = raptor(net, [StopAndTime(s1, gt(7, 55))], Date(2023, 4, 8))
         removed_weekday = raptor(net, [StopAndTime(s1, gt(7, 55))], Date(2023, 7, 4))
 
