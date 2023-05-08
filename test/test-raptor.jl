@@ -38,6 +38,7 @@ include("raptor/test-service-running.jl")
 include("raptor/test-overnight.jl")
 include("raptor/test-transfer-and-direct.jl")
 include("raptor/test-local-express.jl")
+include("raptor/test-min-walk-distance.jl")
 
 # add testsets for: 
 #  overnight routing

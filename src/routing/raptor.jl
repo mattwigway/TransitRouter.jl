@@ -12,7 +12,10 @@ const OFFSETS = (yesterday=-SECONDS_PER_DAY, today=0, tomorrow=SECONDS_PER_DAY)
 struct StopAndTime
     stop::Int64
     time::Int32
+    walk_distance_meters::Int64
 end
+
+StopAndTime(stop, time) = StopAndTime(stop, time, 0)
 
 """
 Contains the results of a RAPTOR search.
