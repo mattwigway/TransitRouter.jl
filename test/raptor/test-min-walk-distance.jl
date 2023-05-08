@@ -63,7 +63,8 @@
         @test res.prev_stop[1, :] == fill(IM, 7)
         @test res.prev_boardtime[1, :] == fill(IM, 7)
         @test res.transfer_prev_stop[1, :] == fill(IM, 7)
-        #@test res.walk_distance[1, :] == [150, 100, IM, IM, IM, IM, IM]
+        @test res.walk_distance_meters[1, :] == [150, 100, IM, IM, IM, IM, IM]
+        @test res.non_transfer_walk_distance_meters[1, :] == fill(IM, 7)
 
         # round 2: after riding route A
         # NB the longer walk will be chosen if it provides the only non-transfer way to get to a location. For instance,
@@ -77,7 +78,8 @@
         @test res.prev_stop[2, :] == [IM, 1, 2, 2, IM, IM, IM]  # should have boarded at 2 - shorter walk - but to get to 2 will board at 1 for non-transfer trip
         @test res.prev_boardtime[2, :] == [IM, gt(8, 0), gt(8, 5), gt(8, 5), IM, IM, IM]
         @test res.transfer_prev_stop[2, :] == [IM, IM, IM, IM, 3, 4, IM]
-        #@test res.walk_distance[2, :] == [150, 100, 100, 100, 100 + net.transfers[3][1].distance_meters, 100 + net.transfers[4][1].distance_meters, IM]
+        @test res.walk_distance_meters[2, :] == [150, 100, 100, 100, 100 + round(Int32, net.transfers[3][1].distance_meters), 100 + round(Int32, net.transfers[4][1].distance_meters), IM]
+        @test res.non_transfer_walk_distance_meters[2, :] == [IM, 150, 100, 100, IM, IM, IM]
 
         # round 3: after riding route B
         @test res.times_at_stops_each_round[3, :] == [gt(7, 55), gt(7, 55), gt(8, 10), gt(8, 15),
@@ -91,9 +93,16 @@
         @test res.prev_stop[3, :] == [IM, IM, IM, IM, IM, 5, 6]  # should have boarded at 6 - shorter walk - but to get to 6 via transit, boarded at 5
         @test res.prev_boardtime[3, :] == [IM, IM, IM, IM, IM, gt(9, 0), gt(9, 5)]
         @test res.transfer_prev_stop[3, :] == [IM, IM, IM, IM, IM, IM, IM]
-        # @test res.walk_distance[3, :] == [150, 100, 100, 100,
-        #     100 + net.transfers[3][1].distance_meters,
-        #     100 + net.transfers[4][1].distance_meters, IM]
+        @test res.walk_distance_meters[3, :] == [150, 100, 100, 100,
+            100 + round(Int32, net.transfers[3][1].distance_meters),
+            100 + round(Int32, net.transfers[4][1].distance_meters),
+            100 + round(Int32, net.transfers[4][1].distance_meters)
+            ]
+        # second non-transfer is 150 because you'd have to board at stop 1 to get here by transit
+        @test res.non_transfer_walk_distance_meters[3, :] == [IM, 150, 100, 100,            
+            IM, # can't get to 5 by transit
+            100 + round(Int32, net.transfers[4][1].distance_meters),
+            100 + round(Int32, net.transfers[4][1].distance_meters)]
 
     end
 end

@@ -36,6 +36,11 @@ Contains the results of a RAPTOR search.
   Non-transfer times at stops are propagated forward, so a stop reached in round 2 will still be present with the same time
   in round 3, unless a faster way has been found.
 
+- `walk_distance_meters[i, j]` is the walk distance corresponding to the route in time_at_stops_each_round. Walk distance
+  is used as a tiebreaker when multiple routes get you on the same vehicle.
+
+- `non_transfer_walk_distance_meters[i, j]` is similar for the route coresponding to the time in non_transfer_times_at_stops_each_round.
+
 - `prev_stop[i, j]` is the stop where the passenger boarded the transit vehicle that delivered
   them to stop j in round i. This only reflects stops reached via transit; if the stop was reached via
   a transfer, the origin of the transfer will be stored in `transfer_prev_stop`. `transfer_prev_stop` and
@@ -70,6 +75,8 @@ Contains the results of a RAPTOR search.
 struct RaptorResult
     times_at_stops_each_round::Array{Int32, 2} 
     non_transfer_times_at_stops_each_round::Array{Int32, 2}
+    walk_distance_meters::Matrix{Int32}
+    non_transfer_walk_distance_meters::Matrix{Int32}
     prev_stop::Array{Int64, 2}
     transfer_prev_stop::Matrix{Int64}
     prev_trip::Array{Int64, 2}
@@ -99,6 +106,8 @@ function raptor(
     # last times at stops not used, no transfer phase
     times_at_stops::Array{Int32,2} = fill(MAX_TIME, (nrounds - 1, nstops))
     non_transfer_times_at_stops::Array{Int32, 2} = fill(MAX_TIME, (nrounds, nstops))
+    walk_distance_meters::Matrix{Int32} = fill(INT_MISSING, (nrounds - 1, nstops))
+    non_transfer_walk_distance_meters::Matrix{Int32} = fill(INT_MISSING, (nrounds, nstops))
     prev_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     transfer_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_trip::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
@@ -116,6 +125,7 @@ function raptor(
     # initialize times at stops
     for sat in origins
         times_at_stops[1, sat.stop] = sat.time
+        walk_distance_meters[1, sat.stop] = sat.walk_distance_meters
         push!(prev_touched_stops, sat.stop)
     end
 
@@ -134,29 +144,43 @@ function raptor(
 
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
     # a bounded bitset implementation that did not dynamically resize.
-    run_raptor!(net, times_at_stops, non_transfer_times_at_stops, prev_stop, transfer_stop, prev_trip, prev_boardtime, walk_speed_meters_per_second,
-        max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
-
-    return RaptorResult(
+    result = RaptorResult(
         times_at_stops,
         non_transfer_times_at_stops,
+        walk_distance_meters,
+        non_transfer_walk_distance_meters,
         prev_stop,
         transfer_stop,
         prev_trip,
         prev_boardtime,
         date
     )
+
+    run_raptor!(net, result, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
+
+    return result
 end
 
-function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_transfer_times_at_stops::Array{Int32, 2}, prev_stop::Array{Int64, 2}, transfer_prev_stop,
-    prev_trip::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides,
-    services_running, prev_touched_stops::BitSet, touched_stops::BitSet)
-    for round in 1:max_rides
+function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running,
+        prev_touched_stops::BitSet, touched_stops::BitSet)
+
+    # convenience
+    times_at_stops = result.times_at_stops_each_round
+    non_transfer_times_at_stops = result.non_transfer_times_at_stops_each_round
+    walk_distance_meters = result.walk_distance_meters
+    non_transfer_walk_distance_meters = result.non_transfer_walk_distance_meters
+    prev_stop = result.prev_stop
+    transfer_prev_stop = result.transfer_prev_stop
+    prev_trip = result.prev_trip
+    prev_boardtime = result.prev_boardtime
+
+    for current_round in 1:max_rides
         # where the results of this round will be recorded
-        target = round + 1
+        target = current_round + 1
 
         # preinitialize times with times from previous round
         non_transfer_times_at_stops[target, :] = non_transfer_times_at_stops[target - 1, :]
+        non_transfer_walk_distance_meters[target, :] = non_transfer_walk_distance_meters[target - 1, :]
 
         for stop in prev_touched_stops
             # find all patterns that touch this stop
@@ -216,6 +240,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
                         if stop_time.arrival_time + stop_time_offset < non_transfer_times_at_stops[target, stop_time.stop]
                             # we have found a new fastest way to get to this stop!
                             non_transfer_times_at_stops[target, stop_time.stop] = stop_time.arrival_time + stop_time_offset
+                            non_transfer_walk_distance_meters[target, stop_time.stop] = walk_distance_meters[target - 1, stop]
                             prev_stop[target, stop_time.stop] = stop
                             prev_trip[target, stop_time.stop] = best_trip_idx
                             prev_boardtime[target, stop_time.stop] = best_trip.stop_times[stoppos].departure_time + stop_time_offset
@@ -234,18 +259,21 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
             end
         end # loop over prev_touched_stop
 
-        @debug "round $round found $(length(touched_stops)) stops accessible by transit"
+        @debug "round $current_round found $(length(touched_stops)) stops accessible by transit"
 
         # clear prev_touched_stops and reuse as next_touched_stops, avoid allocation
         empty!(prev_touched_stops)
         next_touched_stops = prev_touched_stops
 
         # do transfers, but skip after last iteration
-        if round < max_rides
+        if current_round < max_rides
             # don't find transfers to stops that already have better transfers from previous rounds
             # this should not affect routing results, as those transfers would not be optimal in the next
             # round of transit routing, but better to stop it before it happens
-            times_at_stops[target, :] = min.(times_at_stops[target - 1, :], non_transfer_times_at_stops[target, :])
+            # ≤ means fewer transfer routes will win over more transfer routes.
+            preserve_old = times_at_stops[target - 1, :] .≤ non_transfer_times_at_stops[target, :]
+            times_at_stops[target, :] = ifelse.(preserve_old, times_at_stops[target - 1, :], non_transfer_times_at_stops[target, :])
+            walk_distance_meters[target, :] = ifelse.(preserve_old, walk_distance_meters[target - 1, :], non_transfer_walk_distance_meters[target, :])
 
             # leave other things missing if there were no transfers
             for stop in touched_stops
@@ -259,6 +287,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
                         if time_after_xfer < times_at_stops[target, xfer.target_stop]
                             # transferring to this stop is optimal!
                             times_at_stops[target, xfer.target_stop] = time_after_xfer
+                            walk_distance_meters[target, xfer.target_stop] = non_transfer_walk_distance_meters[target, stop] + round(Int32, xfer.distance_meters)
                             transfer_prev_stop[target, xfer.target_stop] = stop
 
                             # note that we do _not_ update prev_boardtime, etc here because
