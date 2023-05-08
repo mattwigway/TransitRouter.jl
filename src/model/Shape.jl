@@ -88,9 +88,9 @@ function infer_shape_dist_traveled(shape, lat, lon)
     coords = map(shape.geom) do coord
         [coord.lon * coslat, coord.lat]
     end
-    geosgeom = LibGEOS.createLineString(coords)
+    geosgeom = LibGEOS.LineString(coords)
 
-    projected_space_dist = LibGEOS.project(geosgeom, LibGEOS.createPoint(lon * coslat, lat))
+    projected_space_dist = LibGEOS.project(geosgeom, LibGEOS.Point(lon * coslat, lat))
 
     # short circuit here in case it's a little less than 0
     if projected_space_dist ≈ 0.0
