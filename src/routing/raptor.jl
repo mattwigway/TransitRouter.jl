@@ -161,6 +161,9 @@ function raptor(
     return result
 end
 
+# return true if time1 is better than time2, or time1 equals time2 and distance1 < distance2
+dominates(time1, distance1, time2, distance2) = time1 < time2 || (time1 == time2 && distance1 < distance2)
+
 function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running,
         prev_touched_stops::BitSet, touched_stops::BitSet)
 
@@ -178,7 +181,11 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
         # where the results of this round will be recorded
         target = current_round + 1
 
-        # preinitialize times with times from previous round
+        # preinitialize times with times from previous round, or from later minute
+        if current_round != max_rides
+            times_at_stops[target, :] = times_at_stops[target - 1, :]
+            walk_distance_meters[target, :] = walk_distance_meters[target - 1, :]
+        end
         non_transfer_times_at_stops[target, :] = non_transfer_times_at_stops[target - 1, :]
         non_transfer_walk_distance_meters[target, :] = non_transfer_walk_distance_meters[target - 1, :]
 
@@ -238,16 +245,13 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
                     for stidx in stoppos + 1:length(best_trip.stop_times)
                         stop_time = best_trip.stop_times[stidx]
                         best_trip_time = stop_time.arrival_time + stop_time_offset
-                        time_to_beat = non_transfer_times_at_stops[target, stop_time.stop]
-                        if best_trip_time < time_to_beat || (
-                                # break ties with walk distance
-                                best_trip_time == time_to_beat &&
-                                # walk distance to boarding is better than current walk distance to stop
-                                walk_distance_meters[target - 1, stop] < non_transfer_walk_distance_meters[target, stop_time.stop]
-                        )
-
+                        
+                        # if the time at this stop and the walk distance to get to where we boarded is better than the
+                        # non-transfer time/distance, we found a new way
+                        if dominates(best_trip_time, walk_distance_meters[target - 1, stop],
+                                non_transfer_times_at_stops[target, stop_time.stop], non_transfer_walk_distance_meters[target, stop_time.stop])
                             # we have found a new fastest way to get to this stop!
-                            non_transfer_times_at_stops[target, stop_time.stop] = stop_time.arrival_time + stop_time_offset
+                            non_transfer_times_at_stops[target, stop_time.stop] = best_trip_time
                             non_transfer_walk_distance_meters[target, stop_time.stop] = walk_distance_meters[target - 1, stop]
                             prev_stop[target, stop_time.stop] = stop
                             prev_trip[target, stop_time.stop] = best_trip_idx
@@ -279,7 +283,7 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
             # this should not affect routing results, as those transfers would not be optimal in the next
             # round of transit routing, but better to stop it before it happens
             # ≤ means fewer transfer routes will win over more transfer routes.
-            preserve_old = times_at_stops[target - 1, :] .≤ non_transfer_times_at_stops[target, :]
+            preserve_old = dominates.(times_at_stops[target - 1, :], walk_distance_meters[target - 1, :], non_transfer_times_at_stops[target, :], non_transfer_walk_distance_meters[target, :])
             times_at_stops[target, :] = ifelse.(preserve_old, times_at_stops[target - 1, :], non_transfer_times_at_stops[target, :])
             walk_distance_meters[target, :] = ifelse.(preserve_old, walk_distance_meters[target - 1, :], non_transfer_walk_distance_meters[target, :])
 
@@ -293,11 +297,8 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
                         pre_xfer_time = non_transfer_times_at_stops[target, stop]
                         time_after_xfer = pre_xfer_time + xfer_walk_time
                         dist_after_xfer = non_transfer_walk_distance_meters[target, stop] + round(Int32, xfer.distance_meters)
-                        if time_after_xfer < times_at_stops[target, xfer.target_stop] || (
-                            # break ties with walk distance
-                            time_after_xfer == times_at_stops[target, xfer.target_stop] &&
-                            dist_after_xfer < walk_distance_meters[target, xfer.target_stop]
-                        )
+                        if dominates(time_after_xfer, dist_after_xfer,
+                                times_at_stops[target, xfer.target_stop], walk_distance_meters[target, xfer.target_stop])
                             # transferring to this stop is optimal!
                             times_at_stops[target, xfer.target_stop] = time_after_xfer
                             walk_distance_meters[target, xfer.target_stop] = dist_after_xfer
