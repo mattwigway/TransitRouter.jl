@@ -237,7 +237,15 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
 
                     for stidx in stoppos + 1:length(best_trip.stop_times)
                         stop_time = best_trip.stop_times[stidx]
-                        if stop_time.arrival_time + stop_time_offset < non_transfer_times_at_stops[target, stop_time.stop]
+                        best_trip_time = stop_time.arrival_time + stop_time_offset
+                        time_to_beat = non_transfer_times_at_stops[target, stop_time.stop]
+                        if best_trip_time < time_to_beat || (
+                                # break ties with walk distance
+                                best_trip_time == time_to_beat &&
+                                # walk distance to boarding is better than current walk distance to stop
+                                walk_distance_meters[target - 1, stop] < non_transfer_walk_distance_meters[target, stop_time.stop]
+                        )
+
                             # we have found a new fastest way to get to this stop!
                             non_transfer_times_at_stops[target, stop_time.stop] = stop_time.arrival_time + stop_time_offset
                             non_transfer_walk_distance_meters[target, stop_time.stop] = walk_distance_meters[target - 1, stop]
@@ -284,10 +292,15 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
                         xfer_walk_time = Base.round(xfer.distance_meters / walk_speed_meters_per_second)
                         pre_xfer_time = non_transfer_times_at_stops[target, stop]
                         time_after_xfer = pre_xfer_time + xfer_walk_time
-                        if time_after_xfer < times_at_stops[target, xfer.target_stop]
+                        dist_after_xfer = non_transfer_walk_distance_meters[target, stop] + round(Int32, xfer.distance_meters)
+                        if time_after_xfer < times_at_stops[target, xfer.target_stop] || (
+                            # break ties with walk distance
+                            time_after_xfer == times_at_stops[target, xfer.target_stop] &&
+                            dist_after_xfer < walk_distance_meters[target, xfer.target_stop]
+                        )
                             # transferring to this stop is optimal!
                             times_at_stops[target, xfer.target_stop] = time_after_xfer
-                            walk_distance_meters[target, xfer.target_stop] = non_transfer_walk_distance_meters[target, stop] + round(Int32, xfer.distance_meters)
+                            walk_distance_meters[target, xfer.target_stop] = dist_after_xfer
                             transfer_prev_stop[target, xfer.target_stop] = stop
 
                             # note that we do _not_ update prev_boardtime, etc here because

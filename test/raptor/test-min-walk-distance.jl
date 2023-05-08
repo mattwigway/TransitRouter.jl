@@ -101,7 +101,7 @@
         # second non-transfer is 150 because you'd have to board at stop 1 to get here by transit
         @test res.non_transfer_walk_distance_meters[3, :] == [IM, 150, 100, 100,            
             IM, # can't get to 5 by transit
-            100 + round(Int32, net.transfers[4][1].distance_meters),
+            100 + round(Int32, net.transfers[3][1].distance_meters), # 6 accessed via transfer at 5
             100 + round(Int32, net.transfers[4][1].distance_meters)]
 
     end
