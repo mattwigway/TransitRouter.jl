@@ -160,7 +160,7 @@ function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_t
             # optimization: mark patterns, then loop over patterns instead of stops
             for patidx in net.patterns_for_stop[stop]
 
-                # explore patterns twice, once for today and once for tomorrow
+                # explore patterns thrice, once for yesterday, today and tomorrow
                 tp = net.patterns[patidx]
 
                 for day in (:yesterday, :today, :tomorrow)
