@@ -44,7 +44,7 @@ function street_raptor(
         dist = access.distances[1, stop_near_origin_idx]
 
         if dist <= max_access_distance_meters
-            push!(accessible_stops, StopAndTime(stop_idx, round(time)))
+            push!(accessible_stops, StopAndTime(stop_idx, round(time), dist))
         end
     end
 
