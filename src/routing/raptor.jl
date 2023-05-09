@@ -90,9 +90,16 @@ function empty_no_resize!(s::BitSet)
     end
 end
 
+# old API
+#@deprecate
+raptor(net, origins::Vector{StopAndTime}, date::Date; kwargs...) = raptor(origins, net, date; kwargs...)
+
+raptor(origins::Vector{StopAndTime}, net, date::Date; kwargs...) =
+    raptor((r, v) -> isnothing(r) ? (origins, nothing) : nothing, net, date, kwargs...)
+
 function raptor(
+    origins::Function,
     net::TransitNetwork,
-    origins::Vector{StopAndTime},
     date::Date;
     walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND,
     max_transfer_distance_meters=DEFAULT_MAX_LEG_WALK_DISTANCE_METERS,
@@ -122,13 +129,6 @@ function raptor(
     delete!(prev_touched_stops, 0)
     delete!(touched_stops, 0)
 
-    # initialize times at stops
-    for sat in origins
-        times_at_stops[1, sat.stop] = sat.time
-        walk_distance_meters[1, sat.stop] = sat.walk_distance_meters
-        push!(prev_touched_stops, sat.stop)
-    end
-
     @assert prev_touched_stops.offset == 0
     @assert touched_stops.offset == 0
 
@@ -156,7 +156,35 @@ function raptor(
         date
     )
 
-    run_raptor!(net, result, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
+    
+    # get initial times at stops
+    origin_times, val = origins(nothing, nothing)
+    while true
+        # initialize times at stops
+        for sat in origin_times
+            if dominates(
+                sat.time, sat.walk_distance_meters,
+                times_at_stops[1, sat.stop], walk_distance_meters[1, sat.stop]
+            )
+                times_at_stops[1, sat.stop] = sat.time
+                walk_distance_meters[1, sat.stop] = sat.walk_distance_meters
+                transfer_stop[1, sat.stop] = INT_MISSING
+                push!(prev_touched_stops, sat.stop)
+            end
+        end
+
+        run_raptor!(net, result, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
+
+        empty_no_resize!(prev_touched_stops)
+        empty_no_resize!(touched_stops)
+
+        nextstops = origins(result, val)
+        if isnothing(nextstops)
+            break
+        else
+            times_at_stops, val = nextstops
+        end
+    end
 
     return result
 end
@@ -182,12 +210,33 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
         target = current_round + 1
 
         # preinitialize times with times from previous round, or from later minute
-        if current_round != max_rides
-            times_at_stops[target, :] = times_at_stops[target - 1, :]
-            walk_distance_meters[target, :] = walk_distance_meters[target - 1, :]
+        for stop in eachindex(net.stops)
+            # skip on last round, no transfers
+            if current_round != max_rides && dominates(
+                    times_at_stops[current_round, stop], walk_distance_meters[current_round, stop],
+                    times_at_stops[target, stop], walk_distance_meters[target, stop]
+                )
+
+                # copy forward times and clear transfer information
+                # not clearing transit path information as that is associated with non-transfer times
+                times_at_stops[target, stop] = times_at_stops[current_round, stop]
+                walk_distance_meters[target, stop] = walk_distance_meters[current_round, stop]
+                transfer_prev_stop[target, stop] = INT_MISSING
+            end
+
+            if dominates(
+                    non_transfer_times_at_stops[current_round, stop], non_transfer_walk_distance_meters[current_round, stop],
+                    non_transfer_times_at_stops[target, stop], non_transfer_walk_distance_meters[target, stop]
+                )
+
+                # copy forward non-transfer times and clear transit information
+                non_transfer_times_at_stops[target, stop] = non_transfer_times_at_stops[current_round, stop]
+                non_transfer_walk_distance_meters[target, stop] = non_transfer_walk_distance_meters[current_round, stop]
+                prev_stop[target, stop] = INT_MISSING
+                prev_boardtime[target, stop] = INT_MISSING
+                prev_trip[target, stop] = INT_MISSING
+            end
         end
-        non_transfer_times_at_stops[target, :] = non_transfer_times_at_stops[target - 1, :]
-        non_transfer_walk_distance_meters[target, :] = non_transfer_walk_distance_meters[target - 1, :]
 
         for stop in prev_touched_stops
             # find all patterns that touch this stop
