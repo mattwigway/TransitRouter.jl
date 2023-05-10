@@ -32,9 +32,19 @@ else
         # check the transfer from Hitchcock and State to State and Hitchcock
         s1 = net.stopidx_for_id["$gtfs_path:266"]
         s2 = net.stopidx_for_id["$gtfs_path:176"]
-
+        
         transfer = filter(t -> t.target_stop == s2, net.transfers[s1])
         @test length(transfer) == 1
         @snapshot_test "state_hitchcock_transfer" transfer
+
+        # Origin is UCSB, destination is downtown and eastside
+        res = street_raptor(net, osrm, osrm, LatLon(34.4128, -119.8487), [LatLon(34.4224, -119.7032), LatLon(34.4226, -119.6777)], DateTime(2023, 5, 10, 8, 0))
+
+        @snapshot_test "streetrouter_times_at_destinations" res.times_at_destinations
+        @snapshot_test "streetrouter_egress_stop_for_destination" res.egress_stop_for_destination
+        @snapshot_test "streetrouter_access_geom_for_destination" res.access_geom_for_destination
+        @snapshot_test "streetrouter_access_dist_for_destination" res.access_dist_for_destination
+        @snapshot_test "streetrouter_egress_geom_for_destination" res.egress_geom_for_destination
+        @snapshot_test "streetrouter_egress_dist_for_destination" res.egress_dist_for_destination
     end
 end
