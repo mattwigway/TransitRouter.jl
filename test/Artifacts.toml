@@ -1,0 +1,6 @@
+[sb_gtfs]
+git-tree-sha1 = "37d38bc2e48520d2b30fcd8419ac84b6376512a1"
+
+    [[sb_gtfs.download]]
+    sha256 = "9aeb34231c5b0a847e3c163cd004bc6dcb6c051826f0e5b7335ea1d123578746"
+    url = "https://gist.github.com/mattwigway/f1bdd98007cbf10d18560aeba47f65af/raw/37d38bc2e48520d2b30fcd8419ac84b6376512a1.tar.gz"
