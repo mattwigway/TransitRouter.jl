@@ -32,7 +32,9 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
         prev_time = res.prev_boardtime[round, current_stop]
         prev_trip = net.trips[prev_trip_idx]
         st1 = findfirst(st -> st.stop == prev_stop && st.departure_time == prev_time, prev_trip.stop_times)
+        @assert !isnothing(st1)
         st2 = findfirst(st -> st.stop == current_stop && st.arrival_time == time_after_round, prev_trip.stop_times)
+        @assert !isnothing(st2)
         geom = geom_between(prev_trip, net, prev_trip.stop_times[st1], prev_trip.stop_times[st2])
         transit_leg = Leg(
             seconds_since_midnight_to_datetime(res.date, prev_time),
@@ -78,20 +80,25 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
     return legs
 end
 
-function trace_path(net::TransitNetwork, res::StreetRaptorResult, destination::Int64)
+"""
+Trace a path from a StreetRaptorResult, to a particular destination and for a particular departure time (index into range-RAPTOR array)
+"""
+function trace_path(net::TransitNetwork, res::StreetRaptorResult, destination::Int64, departure::Int64)
     # get the transit path
-    dest_stop = res.egress_stop_for_destination[destination]
+    raptor_res = res.raptor_results[departure]
+    dest_stop = res.egress_stop_each_departure_time[departure, destination]
     depart_date = Date(res.departure_date_time)
 
     if dest_stop == INT_MISSING
         return missing
     end
 
-    legs = trace_path(net, res.raptor_result, dest_stop)
+    legs = trace_path(net, res.raptor_results[departure], dest_stop)
 
     # add the egress
-    dest_time = res.times_at_destinations[destination]
-    final_stop_arr_time = res.raptor_result.times_at_stops_each_round[size(res.raptor_result.times_at_stops_each_round, 1), dest_stop]
+    dest_time = res.times_at_destinations_each_departure_time[departure, destination]
+    final_stop_arr_time = raptor_res.non_transfer_times_at_stops_each_round[end, dest_stop]
+    egr = res.egress_geometries[(destination, dest_stop)]
     egress_leg = Leg(
         seconds_since_midnight_to_datetime(depart_date, final_stop_arr_time),
         seconds_since_midnight_to_datetime(depart_date, dest_time),
@@ -99,30 +106,60 @@ function trace_path(net::TransitNetwork, res::StreetRaptorResult, destination::I
         missing,
         egress,
         missing,
-        res.egress_dist_for_destination[destination],
-        res.egress_geom_for_destination[destination]
+        egr.distance_meters,
+        egr.geometry
     )
     push!(legs, egress_leg)
 
     # add the access
-    initial_board_stop = findfirst(s -> s === legs[1].origin_stop, net.stops)
+    initial_board_stop = findfirst(s -> s === legs[begin].origin_stop, net.stops)
+    acc = res.access_geometries[initial_board_stop]
     # first round is access times
-    arrival_time_at_initial_board_stop = seconds_since_midnight_to_datetime(
-        depart_date,
-        res.raptor_result.times_at_stops_each_round[1, initial_board_stop]
-    )
+    arrival_time_at_initial_board_stop = legs[begin].start_time - Dates.Second(BOARD_SLACK_SECONDS)
+    departure_time = arrival_time_at_initial_board_stop - Dates.Second(round(Int64, acc.duration_seconds))
     access_leg = Leg(
-        res.departure_date_time,
+        departure_time,
         arrival_time_at_initial_board_stop,
         missing,
         net.stops[initial_board_stop],
         access,
         missing,
-        res.access_dist_for_destination[destination],
-        res.access_geom_for_destination[destination]
+        acc.distance_meters,
+        acc.geometry
         )
 
     pushfirst!(legs, access_leg)
 
     return legs
+end
+
+
+"""
+Return all optimal paths found to get to the destination. Note that optimal in this case does not exactly
+match what you would get from running raptor() and trace() repeatedly, because of the "transfer compression"
+aspect of the range-RAPTOR algorithm. Suppose your trip requires connecting from an infrequent bus to a frequent
+one. Running RAPTOR repeatedly result in always boarding the next available trip on the infrequent bus, even if
+you could catch a later trip and still arrive at the same time due to a shorter transfer to the same second bus.
+
+This fill find the latest-departure-time path for all optimal arrival times.
+"""
+function trace_all_optimal_paths(net::TransitNetwork, res::StreetRaptorResult, destination)
+    result = Vector{Vector{Leg}}()
+
+    # we loop backwards over RAPTOR results, just like in range-RAPTOR. Every time we find
+    # an earlier arrival at the destination, we trace that trip. This is the latest-departure
+    # trip that will get you to teh destination at the optimal time.
+    last_best_time = MAX_TIME
+
+    for departure in size(res.times_at_destinations_each_departure_time, 1):-1:1
+        arr_time = res.times_at_destinations_each_departure_time[departure, destination]
+        if arr_time < last_best_time
+            # we have found another optimal trip
+            last_best_time = arr_time
+            push!(result, trace_path(net, res, destination, departure))
+        end
+    end
+
+    reverse!(result)
+    return result
 end

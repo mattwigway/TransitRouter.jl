@@ -12,7 +12,6 @@ else
     mktempdir() do dir
         Base.Filesystem.cp(artifact"sb_gtfs", joinpath(dir, "data"))
 
-
         osm_path = joinpath(dir, "data", "osrm_network", "SBMTD.osm.pbf")
         net_path = joinpath(dir, "data", "osrm_network", "SBMTD.osrm")
         gtfs_path = joinpath(dir, "data", "feed.zip")

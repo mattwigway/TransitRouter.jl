@@ -95,7 +95,7 @@ end
 raptor(net, origins::Vector{StopAndTime}, date::Date; kwargs...) = raptor(origins, net, date; kwargs...)
 
 raptor(origins::Vector{StopAndTime}, net, date::Date; kwargs...) =
-    raptor((r, v) -> isnothing(r) ? (origins, nothing) : nothing, net, date, kwargs...)
+    raptor((r, v) -> (isnothing(r) ? (origins, nothing) : nothing), net, date; kwargs...)
 
 function raptor(
     origins::Function,
@@ -182,7 +182,7 @@ function raptor(
         if isnothing(nextstops)
             break
         else
-            times_at_stops, val = nextstops
+            origin_times, val = nextstops
         end
     end
 
