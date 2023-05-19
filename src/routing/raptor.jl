@@ -2,10 +2,8 @@
 # Described in Delling, D., Pajor, T., & Werneck, R. (2012). Round-Based Public Transit Routing. http://research.microsoft.com/pubs/156567/raptor_alenex.pdf
 
 const MAX_TIME = typemax(Int32)
-const XFER_ROUTE = -1
 const INT_MISSING = -2
-const ORIGIN = -3
-const BOARD_SLACK_SECONDS = 60
+const BOARD_SLACK_SECONDS = convert(Int32, 60)
 const EMPTY_SET = BitSet()
 const OFFSETS = (yesterday=-SECONDS_PER_DAY, today=0, tomorrow=SECONDS_PER_DAY)
 
@@ -116,7 +114,7 @@ function raptor(
     walk_distance_meters::Matrix{Int32} = fill(INT_MISSING, (nrounds - 1, nstops))
     non_transfer_walk_distance_meters::Matrix{Int32} = fill(INT_MISSING, (nrounds, nstops))
     prev_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
-    transfer_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
+    transfer_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds - 1, nstops))
     prev_trip::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_boardtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
     # set bit 0 so that offset is forced to zero and there aren't allocations later
@@ -332,13 +330,24 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
             # this should not affect routing results, as those transfers would not be optimal in the next
             # round of transit routing, but better to stop it before it happens
             # ≤ means fewer transfer routes will win over more transfer routes.
-            preserve_old = dominates.(times_at_stops[target - 1, :], walk_distance_meters[target - 1, :], non_transfer_times_at_stops[target, :], non_transfer_walk_distance_meters[target, :])
-            times_at_stops[target, :] = ifelse.(preserve_old, times_at_stops[target - 1, :], non_transfer_times_at_stops[target, :])
-            walk_distance_meters[target, :] = ifelse.(preserve_old, walk_distance_meters[target - 1, :], non_transfer_walk_distance_meters[target, :])
+            # TODO this is not happening anymore. This used to copy forward transfers from previous rounds, now it just copies non-transfer times
+            # to transfer times (i.e. loop transfers)
+            # preserve_old = dominates.(times_at_stops[target, :], walk_distance_meters[target, :], non_transfer_times_at_stops[target, :], non_transfer_walk_distance_meters[target, :])
+            # times_at_stops[target, :] = ifelse.(preserve_old, times_at_stops[target, :], non_transfer_times_at_stops[target, :])
+            # walk_distance_meters[target, :] = ifelse.(preserve_old, walk_distance_meters[target, :], non_transfer_walk_distance_meters[target, :])
+            # transfer_prev_stop[target, :] = ifelse.(preserve_old, transfer_prev_stop[target, :], INT_MISSING)
 
             # leave other things missing if there were no transfers
             for stop in touched_stops
                 push!(next_touched_stops, stop)  # this stop was touched by this round
+
+                # handle the loop transfer
+                if dominates(non_transfer_times_at_stops[target, stop], non_transfer_walk_distance_meters[target, stop],
+                        times_at_stops[target, stop], walk_distance_meters[target, stop])
+                    times_at_stops[target, stop] = non_transfer_times_at_stops[target, stop]
+                    walk_distance_meters[target, stop] = non_transfer_walk_distance_meters[target, stop]
+                    transfer_prev_stop[target, stop] = INT_MISSING
+                end
 
                 for xfer in net.transfers[stop]
                     if xfer.distance_meters <= max_transfer_distance_meters
