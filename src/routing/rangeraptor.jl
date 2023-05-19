@@ -46,7 +46,6 @@ function range_raptor(origins::Vector{StopAndTime}, net::TransitNetwork, date::D
 
         # step backward to earlier departure time, initialize on first iteration
         offset = isnothing(offset) ? time_window_length_seconds : offset
-        offset -= step_size_seconds
 
         if offset < 0
             # end the range-raptor search
@@ -54,6 +53,9 @@ function range_raptor(origins::Vector{StopAndTime}, net::TransitNetwork, date::D
         end
 
         access_stops = map(sat -> StopAndTime(sat.stop, sat.time + offset, sat.walk_distance_meters), origins)
+
+        offset -= step_size_seconds
+
         return access_stops, offset
     end
 
