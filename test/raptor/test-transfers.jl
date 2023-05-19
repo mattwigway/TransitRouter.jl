@@ -10,7 +10,9 @@
 # but this is not allowed (no two consecutive transfers)
 # so what we will get instead:
 # 1 = 2 = 3 - 4 = 5
-@testset "RAPTOR transfers" begin
+@testitem "RAPTOR transfers" begin
+    include("../test-includes.jl")
+
     gtfs = MockGTFS()
 
     s1_id = add_stop!(gtfs, 35.180, -80.866)

@@ -20,7 +20,9 @@
 # just use it as a tiebreaker. So we will get the Pareto frontier between time and transfers, with each point on the frontier having
 # as little walk distance as possible.
 
-@testset "Minimum walk distance" begin
+@testitem "Minimum walk distance" begin
+    include("../test-includes.jl")
+
     gtfs = MockGTFS()
     stops = [
         add_stop!(gtfs, 37.363, -122.123),

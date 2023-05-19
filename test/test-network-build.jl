@@ -1,69 +1,73 @@
-function build_gtfs()
-    gtfs = MockGTFS()
 
-    # add a few stops
-    downtown = add_stop!(gtfs, 35.9932, -78.8975, stop_name="Downtown", stop_id="dtn")
-    nccu = add_stop!(gtfs, 35.9728, -78.8952, stop_name="NCCU", stop_id="nccu")
-    lowes = add_stop!(gtfs, 35.9409, -78.9078, stop_name="Lowes", stop_id="lowes")
-    rtp = add_stop!(gtfs, 35.9208, -78.8751, stop_name="RTP", stop_id="rtp")
-    rtp2 = add_stop!(gtfs, 35.9218, -78.8751, stop_name="RTP2", stop_id="rtp2")
 
-    fayetteville = add_route!(gtfs, "Fayetteville", route_id="ftv")
-    rtp_express = add_route!(gtfs, "RTP Express", route_id="rtpx")
+@testitem "Network build" begin
+    include("test-includes.jl")
 
-    every_day = add_service!(gtfs, 20230101, 20231231, service_id="every_day", exceptions=(
-        (20230704, 2), # no service July 4
-    ))
-
-    weekdays_only = add_service!(gtfs, 20230101, 20231231, service_id="weekdays_only",
-        saturday=0,
-        sunday=0,
-        exceptions=(
+    function build_gtfs()
+        gtfs = MockGTFS()
+    
+        # add a few stops
+        downtown = add_stop!(gtfs, 35.9932, -78.8975, stop_name="Downtown", stop_id="dtn")
+        nccu = add_stop!(gtfs, 35.9728, -78.8952, stop_name="NCCU", stop_id="nccu")
+        lowes = add_stop!(gtfs, 35.9409, -78.9078, stop_name="Lowes", stop_id="lowes")
+        rtp = add_stop!(gtfs, 35.9208, -78.8751, stop_name="RTP", stop_id="rtp")
+        rtp2 = add_stop!(gtfs, 35.9218, -78.8751, stop_name="RTP2", stop_id="rtp2")
+    
+        fayetteville = add_route!(gtfs, "Fayetteville", route_id="ftv")
+        rtp_express = add_route!(gtfs, "RTP Express", route_id="rtpx")
+    
+        every_day = add_service!(gtfs, 20230101, 20231231, service_id="every_day", exceptions=(
             (20230704, 2), # no service July 4
-            (20230408, 1) # but it does run April 8 (Saturday)
         ))
+    
+        weekdays_only = add_service!(gtfs, 20230101, 20231231, service_id="weekdays_only",
+            saturday=0,
+            sunday=0,
+            exceptions=(
+                (20230704, 2), # no service July 4
+                (20230408, 1) # but it does run April 8 (Saturday)
+            ))
+    
+        all_calendar_dates = add_service!(gtfs, 0, 0, service_id="dates_only", write_calendar_entry=false, exceptions=(
+            (20230201, 1),
+            (20230202, 1)
+        ))
+    
+        # add a few trips to the routes
+        # the pattern Downtown -> NCCU -> Lowes -> RTP should have two trips
+        add_trip!(gtfs, fayetteville, every_day, (
+            (downtown, "08:00:00"),
+            (nccu, "08:12:00"),
+            (lowes, "08:18:00"),
+            (rtp, "08:21:00")
+        ), trip_id="f1")
+    
+        add_trip!(gtfs, fayetteville, every_day, (
+            (downtown, "08:05:00"),
+            (nccu, "08:17:00"),
+            (lowes, "08:23:00"),
+            (rtp, "08:40:00")
+        ), trip_id="f2")
+    
+        # The opposite pattern also has two, but should end up in separate
+        # patterns because they don't run the same days
+        add_trip!(gtfs, fayetteville, every_day, (
+            (rtp, "16:00:00"),
+            (lowes, "16:10:00"),
+            (nccu, "16:15:00"),
+            (downtown, "16:22:00")
+        ), trip_id="f-1")
+    
+        add_trip!(gtfs, fayetteville, weekdays_only, (
+            (rtp, "17:00:00"),
+            (lowes, "17:10:00"),
+            (nccu, "17:15:00"),
+            (downtown, "17:22:00")
+        ), trip_id="f-2")
+    
+        return gtfs
+    end
 
-    all_calendar_dates = add_service!(gtfs, 0, 0, service_id="dates_only", write_calendar_entry=false, exceptions=(
-        (20230201, 1),
-        (20230202, 1)
-    ))
-
-    # add a few trips to the routes
-    # the pattern Downtown -> NCCU -> Lowes -> RTP should have two trips
-    add_trip!(gtfs, fayetteville, every_day, (
-        (downtown, "08:00:00"),
-        (nccu, "08:12:00"),
-        (lowes, "08:18:00"),
-        (rtp, "08:21:00")
-    ), trip_id="f1")
-
-    add_trip!(gtfs, fayetteville, every_day, (
-        (downtown, "08:05:00"),
-        (nccu, "08:17:00"),
-        (lowes, "08:23:00"),
-        (rtp, "08:40:00")
-    ), trip_id="f2")
-
-    # The opposite pattern also has two, but should end up in separate
-    # patterns because they don't run the same days
-    add_trip!(gtfs, fayetteville, every_day, (
-        (rtp, "16:00:00"),
-        (lowes, "16:10:00"),
-        (nccu, "16:15:00"),
-        (downtown, "16:22:00")
-    ), trip_id="f-1")
-
-    add_trip!(gtfs, fayetteville, weekdays_only, (
-        (rtp, "17:00:00"),
-        (lowes, "17:10:00"),
-        (nccu, "17:15:00"),
-        (downtown, "17:22:00")
-    ), trip_id="f-2")
-
-    return gtfs
-end
-
-@testset "Network build" begin
     gtfs = build_gtfs()
 
     with_gtfs(gtfs) do gtfspath
@@ -77,20 +81,20 @@ end
         lowes = net.stopidx_for_id["$(gtfspath):lowes"]
         rtp = net.stopidx_for_id["$(gtfspath):rtp"]
         rtp2 = net.stopidx_for_id["$(gtfspath):rtp2"]
-        @testset "Stops" begin
+        #@testitem "Stops" begin
             @test length(net.stops) == 5
             @test net.stops[downtown].stop_name == "Downtown"
             @test net.stops[downtown].stop_lat == 35.9932
             @test net.stops[downtown].stop_lon == -78.8975
-        end
+        #end
 
-        @testset "Routes" begin
+        #@testitem "Routes" begin
             @test length(net.routes) == 2
             fayetteville = net.routes[net.routeidx_for_id["$(gtfspath):ftv"]]
             @test fayetteville.route_short_name == "Fayetteville"
-        end
+        #end
 
-        @testset "Calendar and calendar dates" begin
+        #@testitem "Calendar and calendar dates" begin
             every_day = net.services[net.serviceidx_for_id["$(gtfspath):every_day"]]
 
             # every day of 2023, except July 4
@@ -125,9 +129,9 @@ end
             # make sure it wasn't applied to other years
             @test !TransitRouter.is_service_running(calendar_only, Date(2022, 2, 1))
             @test !TransitRouter.is_service_running(calendar_only, Date(2024, 2, 1))
-        end
+        #end
 
-        @testset "Trips and patterns" begin
+        #@testitem "Trips and patterns" begin
             @test length(net.trips) == 4
             @test length(net.patterns) == 3
 
@@ -218,9 +222,9 @@ end
             @test trip_2.stop_times[2].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 10))
             @test trip_2.stop_times[3].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 15))
             @test trip_2.stop_times[4].departure_time == TransitRouter.time_to_seconds_since_midnight(Time(17, 22))
-        end
+        #end
 
-        @testset "Transfers" begin
+        #@testitem "Transfers" begin
             @test length(collect(Iterators.flatten(net.transfers))) == 2
             expected_distance = euclidean_distance(LatLon(35.9208, -78.8751), LatLon(35.9218, -78.8751))
 
@@ -235,11 +239,12 @@ end
             @test net.transfers[rtp2][1].distance_meters ≈ expected_distance
             @test net.transfers[rtp2][1].duration_seconds ≈ expected_distance / TransitRouter.DEFAULT_WALK_SPEED_METERS_PER_SECOND
             @test net.transfers[rtp2][1].geometry == [LatLon(35.9218, -78.8751), LatLon(35.9208, -78.8751)]
-        end
+        #end
     end
 end
 
-@testset "Stop time interpolation" begin
+@testitem "Stop time interpolation" begin
+    include("test-includes.jl")
     gtfs = MockGTFS()
 
     # stop 2 should be 1/2 way, stop 3 3/4 way to stop 4

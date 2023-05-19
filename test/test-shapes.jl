@@ -1,4 +1,6 @@
-@testset "shape_dist_traveled inference" begin
+@testitem "shape_dist_traveled inference" begin
+    include("test-includes.jl")
+
     gtfs = MockGTFS()
 
     r = add_route!(gtfs)
