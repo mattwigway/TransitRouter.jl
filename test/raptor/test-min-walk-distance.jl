@@ -17,8 +17,9 @@
 # explore stops in order, and the first stop that can get you on a vehicle will win.
 #
 # Adding additional objectives to the routing is computationally undesirable, so what we do instead is track walk distance and
-# just use it as a tiebreaker. So we will get the Pareto frontier between time and transfers, with each point on the frontier having
-# as little walk distance as possible.
+# just use it as a tiebreaker - i.e. a "transfer preference" in the RAPTOR paper. This may not always produce all pareto points
+# for time, transfers, walk distance, but it will eliminate weirdness like ladder transfers and long initial walks when a closer
+# stop is a possibility.
 
 @testitem "Minimum walk distance" begin
     include("../test-includes.jl")
