@@ -40,8 +40,8 @@ function street_raptor(
     egress_router::OSRMInstance,
     origin::LatLon{<:Real},
     destinations::AbstractVector{<:LatLon{<:Real}},
-    departure_date_time::DateTime;
-    time_window_length=0,
+    departure_date_time::DateTime,
+    time_window_length_seconds=0;
     max_access_distance_meters=1000.0,
     max_egress_distance_meters=1000.0,
     max_rides=4,
@@ -80,7 +80,7 @@ function street_raptor(
     @debug "$(length(accessible_stops)) stops found near origin"
     @debug "begin transit routing"
 
-    raptor_res = range_raptor(accessible_stops, net, Date(departure_date_time), time_window_length, 60;
+    raptor_res = range_raptor(accessible_stops, net, Date(departure_date_time), time_window_length_seconds, 60;
         walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
 
     @debug "transit routing complete. adding egress times."
