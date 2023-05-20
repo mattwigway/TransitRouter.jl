@@ -163,3 +163,5 @@ function trace_all_optimal_paths(net::TransitNetwork, res::StreetRaptorResult, d
     reverse!(result)
     return result
 end
+
+Base.show(l::TransitRouter.Leg) = "$(l.type) leg from $(ismissing(l.origin_stop) ? "unnamed location" : l.origin_stop.stop_name) to $(ismissing(l.destination_stop) ? "unnamed location" : l.destination_stop.stop_name) at $(Time(l.start_time))–$(Time(l.end_time)) $(l.type == TransitRouter.transit ? "via route " * coalesce(l.route.route_short_name, l.route.route_long_name) : repr(round(Int64, l.distance_meters)) * " meters")"
