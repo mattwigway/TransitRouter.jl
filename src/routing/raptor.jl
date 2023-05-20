@@ -270,7 +270,7 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
 
                     # see if it makes sense to alight
                     # do this before boarding, because you might have a situation where one path rides A->B and another rides B->C
-                    if !isnothing(current_trip)
+                    if !isnothing(current_trip) && tp.drop_off_types[stopidx] != PickupDropoffType.NotAvailable
                         # see if it's (strictly) better - strict so more-transfer trips don't replace fewer-transfer trips
                         if current_trip_arrival_time + stop_time_offset < non_transfer_times_at_stops[target, stop]
                             non_transfer_times_at_stops[target, stop] = current_trip_arrival_time
@@ -286,7 +286,9 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
                     # see if we can board
                     # if we're at a stop reached in the previous round, and we haven't boarded this pattern yet, see if we can board
                     # if we're on board, try to board an earlier trip if the best time to the stop is before the current trip departure time
-                    if stop ∈ prev_touched_stops && (isnothing(current_trip) || times_at_stops[target - 1, stop] ≤ current_trip_departure_time - BOARD_SLACK_SECONDS)
+                    if stop ∈ prev_touched_stops &&
+                            (isnothing(current_trip) || times_at_stops[target - 1, stop] ≤ current_trip_departure_time - BOARD_SLACK_SECONDS) &&
+                            tp.pickup_types[stopidx] != PickupDropoffType.NotAvailable
                         candidate_arrival_time = times_at_stops[target - 1, stop]
                         @assert candidate_arrival_time < MAX_TIME
                         earliest_board_time = candidate_arrival_time + BOARD_SLACK_SECONDS

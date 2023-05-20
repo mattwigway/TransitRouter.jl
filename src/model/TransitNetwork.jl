@@ -71,12 +71,15 @@ function find_trip_patterns!(net::TransitNetwork)
         end
 
         stops::Vector{Int64} = map(st -> st.stop, trip.stop_times)
+        pickup_types = map(st -> st.pickup_type, trip.stop_times)
+        drop_off_types = map(st -> st.drop_off_type, trip.stop_times)
 
         # check for a matching trip pattern
         found_pattern = false
         for (tpidx, tp) in tp_hashes[hash]
             # short circuit and means vector equality won't be tested unless vectors are same length
-            if ((tp.service == trip.service) && length(tp.stops) == length(stops) && all(tp.stops .== stops))
+            if ((tp.service == trip.service) && length(tp.stops) == length(stops) && all(tp.stops .== stops)) &&
+                    all(tp.pickup_types .== pickup_types) && all(tp.drop_off_types .== drop_off_types)
                 @assert !found_pattern "Found multiple matching patterns (internal error)"
                 found_pattern = true
                 new_trip = Trip(
@@ -92,7 +95,7 @@ function find_trip_patterns!(net::TransitNetwork)
 
         if !found_pattern
             # create a new trip pattern
-            tp = TripPattern(stops, trip.service)
+            tp = TripPattern(stops, trip.service, pickup_types, drop_off_types)
             push!(net.patterns, tp)
             tpidx = length(net.patterns)
             push!(tp_hashes[hash], (tpidx, tp))
@@ -269,7 +272,10 @@ function _interpolate_segment_times(net::TransitNetwork, stop_times::Vector{Stop
             stop_times[i].stop_sequence,
             interp_time,
             interp_time,
-            stop_times[i].shape_dist_traveled
+            stop_times[i].shape_dist_traveled,
+            stop_times[i].pickup_type,
+            stop_times[i].drop_off_type
+
         ))
     end
 
