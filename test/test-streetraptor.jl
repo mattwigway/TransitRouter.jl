@@ -51,6 +51,16 @@
             xferres = street_raptor(net, osrm, osrm, LatLon(34.4224, -119.7032), [LatLon(34.4360, -119.8973)], DateTime(2023, 5, 10, 8, 0))
             @snapshot_test "streetrouter_xfer_result" xferres
 
+            # We also test reverse routing here. We do the same trip as the first two above, but make sure that we find a route that arrives
+            # at the destination before the requested departure time.
+            revres = street_raptor(net, osrm, osrm, LatLon(34.4128, -119.8487), [LatLon(34.4224, -119.7032), LatLon(34.4226, -119.6777)], DateTime(2023, 5, 10, 8, 0), -1)
+
+            @test all(revres.times_at_destinations_each_departure_time[begin, :] .≤  gt(8, 0))
+            for dest in 1:2
+                egress_stop = revres.egress_stop_each_departure_time[begin, dest]
+                @test revres.raptor_results[1].non_transfer_times_at_stops_each_round[end, egress_stop] +
+                    round(Int32, revres.egress_geometries[(dest, egress_stop)].duration_seconds) == revres.times_at_destinations_each_departure_time[begin, dest]
+            end
         end
     end
 end

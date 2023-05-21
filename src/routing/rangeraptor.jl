@@ -34,7 +34,7 @@ departure.
 The origins should have the time the stop is reached at the earliest departure time, the code will adjust them later as needed for later
 departure times.
 """
-function range_raptor(origins::Vector{StopAndTime}, net::TransitNetwork, date::Date, time_window_length_seconds::Integer, step_size_seconds::Integer; kwargs...)
+function range_raptor(origins::Vector{StopAndTime}, net::TransitNetwork, date::Date, time_window_length_seconds::Integer, step_size_seconds=SECONDS_PER_MINUTE; kwargs...)
     results = RaptorResult[]
     # run raptor with a function that runs after each minute of the search and
     # copies the result into our RaptorResult array.
@@ -51,6 +51,41 @@ function range_raptor(origins::Vector{StopAndTime}, net::TransitNetwork, date::D
             # end the range-raptor search
             return nothing
         end
+
+        access_stops = map(sat -> StopAndTime(sat.stop, sat.time + offset, sat.walk_distance_meters), origins)
+
+        offset -= step_size_seconds
+
+        return access_stops, offset
+    end
+
+    reverse!(results)
+
+    return results
+end
+
+"""
+This is a variant of range-RAPTOR where the time window length is not prespecified. Rather, the search continues
+until stopping_function(raptor_result) is true. This is used to implement reverse searches where we continue backwards until we find a
+path to the destination(s) that arrives before the requested time. origins should have times set based on leaving the origin at the desired arrival
+time.
+"""
+function range_raptor(stopping_function::Function, origins::Vector{StopAndTime}, net::TransitNetwork, date::Date, step_size_seconds=SECONDS_PER_MINUTE; kwargs...)
+    results = RaptorResult[]
+    # run raptor with a function that runs after each minute of the search and
+    # copies the result into our RaptorResult array.
+    raptor(net, date; kwargs...) do result, offset
+        # save results of this departure time
+        if !isnothing(result)
+            push!(results, deepcopy(result))
+
+            if stopping_function(result, offset)
+                return nothing
+            end
+        end
+
+        # step backward to earlier departure time, initialize on first iteration
+        offset = isnothing(offset) ? 0 : offset
 
         access_stops = map(sat -> StopAndTime(sat.stop, sat.time + offset, sat.walk_distance_meters), origins)
 

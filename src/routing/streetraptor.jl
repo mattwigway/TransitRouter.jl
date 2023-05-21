@@ -41,7 +41,7 @@ function street_raptor(
     origin::LatLon{<:Real},
     destinations::AbstractVector{<:LatLon{<:Real}},
     departure_date_time::DateTime,
-    time_window_length_seconds=0;
+    time_window_length_seconds::Union{Function, Int64}=0;
     max_access_distance_meters=1000.0,
     max_egress_distance_meters=1000.0,
     max_rides=4,
@@ -78,18 +78,15 @@ function street_raptor(
     end
 
     @debug "$(length(accessible_stops)) stops found near origin"
-    @debug "begin transit routing"
 
-    raptor_res = range_raptor(accessible_stops, net, Date(departure_date_time), time_window_length_seconds, 60;
-        walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
+    @debug "finding stops near destination"
 
-    @debug "transit routing complete. adding egress times."
-    times_at_destinations::Matrix{Int32} = fill(MAX_TIME, (length(raptor_res), length(destinations)))
-    egress_stops::Matrix{Int32} = fill(INT_MISSING, (length(raptor_res), length(destinations)))
+    # once there is at least one stop in each column that is less than the specified value,
+    # we are done
+    # TODO different arrival times per-destination
+    critical_times_at_stops = fill(typemin(Int32), (length(net.stops), length(destinations)))
     egress_geometry = Dict{NTuple{2, Int64}, AccessEgress}()
 
-    # find stops near the destination
-    # NB could use spatial index for this if needed
     for destidx in eachindex(destinations)
         stops_near_destination = bbox_filter(destinations[destidx], stop_coords, max_egress_distance_meters)
 
@@ -97,18 +94,61 @@ function street_raptor(
             r = route(egress_router, stop_coords[stop], destinations[destidx])
             if !isempty(r)
                 egress_geometry[(destidx, stop)] = AccessEgress(r[1].geometry, r[1].distance_meters, r[1].duration_seconds, r[1].weight)
-                for depidx in eachindex(raptor_res)
-                    best_time_at_stop = raptor_res[depidx].non_transfer_times_at_stops_each_round[end, stop]
-                    if best_time_at_stop != MAX_TIME
-                        time_at_dest_this_stop = best_time_at_stop + round(Int32, r[1].duration_seconds)
-                        if time_at_dest_this_stop < times_at_destinations[depidx, destidx]
-                            # we found a new optimal way to get to this stop
-                            times_at_destinations[depidx, destidx] = time_at_dest_this_stop
-                            egress_stops[depidx, destidx] = stop
-                        end
-                    end
+                critical_times_at_stops[stop, destidx] = departure_time - round(Int32, r[1].duration_seconds)
+            end
+        end
+    end
+
+    @debug "begin transit routing"
+
+
+    raptor_res = if time_window_length_seconds ≥ 0
+        range_raptor(accessible_stops, net, Date(departure_date_time), time_window_length_seconds, 60;
+            walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
+    else
+        range_raptor(accessible_stops, net, Date(departure_date_time);
+            walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides) do result, _
+                
+            for destidx in 1:length(destinations)
+                if all(result.non_transfer_times_at_stops_each_round[end, :] .> critical_times_at_stops[:, destidx])
+                    # none of the stops have been reached soon enough, routing needs to continue to an
+                    # earlier minute.
+                    # don't stop (me now, cause I'm havin a good time, havin a good time)
+                    return false
                 end
             end
+
+            # if we got here, we've found a route to every destination - stop routing
+            # stop! (in the name of love)
+            return true
+        end
+    end     
+
+
+    @debug "transit routing complete. adding egress times."
+    times_at_destinations::Matrix{Int32} = fill(MAX_TIME, (length(raptor_res), length(destinations)))
+    egress_stops::Matrix{Int32} = fill(INT_MISSING, (length(raptor_res), length(destinations)))
+
+    for depidx in eachindex(raptor_res)
+        for destidx in eachindex(destinations)
+            # egress stop is the one that gives us the best arrival time, i.e. the largest delta between
+            # the critical time and the actual time at the stop. This holds even for forward searches; the
+            # critical time is the time you would have to reach each stop to get to the destination at the
+            # departure time. The reached time will always be greater than the critical time in a forward search,
+            # but the largest (closest to zero) delta is still the one that gives the best arrival time.
+            egress_stop_this_dest = argmax(
+                ifelse.(
+                    critical_times_at_stops[:, destidx] .> typemin(Int32), # only use ones that were critical stops to avoid overflow when subtracting from typemin
+                    critical_times_at_stops[:, destidx] .- raptor_res[depidx].non_transfer_times_at_stops_each_round[end, :],
+                    typemin(Int32)
+                ))
+
+            time_at_stop = raptor_res[depidx].non_transfer_times_at_stops_each_round[end, egress_stop_this_dest]
+            @assert time_at_stop < MAX_TIME
+            time_at_dest = time_at_stop + round(Int32, egress_geometry[(destidx, egress_stop_this_dest)].duration_seconds)
+            
+            egress_stops[depidx, destidx] = egress_stop_this_dest
+            times_at_destinations[depidx, destidx] = time_at_dest
         end
     end
 
