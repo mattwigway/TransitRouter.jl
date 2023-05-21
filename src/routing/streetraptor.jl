@@ -34,6 +34,10 @@ struct StreetRaptorResult
     departure_date_time::DateTime
 end
 
+"""
+If time_window_length_seconds is negative, will perform a range raptor search _ending_ at the requested departure time, and starting up to time_window_length_seconds
+earlier, or at the first time path to all destinations is possible (whichever is later).
+"""
 function street_raptor(
     net::TransitNetwork,
     access_router::OSRMInstance,
@@ -107,7 +111,11 @@ function street_raptor(
             walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
     else
         range_raptor(accessible_stops, net, Date(departure_date_time);
-            walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides) do result, _
+            walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides) do result, offset
+
+            if offset < time_window_length_seconds
+                return true  # we've run out of time
+            end
                 
             for destidx in 1:length(destinations)
                 if all(result.non_transfer_times_at_stops_each_round[end, :] .> critical_times_at_stops[:, destidx])
@@ -136,12 +144,20 @@ function street_raptor(
             # critical time is the time you would have to reach each stop to get to the destination at the
             # departure time. The reached time will always be greater than the critical time in a forward search,
             # but the largest (closest to zero) delta is still the one that gives the best arrival time.
-            egress_stop_this_dest = argmax(
+            critical_time_Δ =
                 ifelse.(
-                    critical_times_at_stops[:, destidx] .> typemin(Int32), # only use ones that were critical stops to avoid overflow when subtracting from typemin
+                     # only use ones that were critical stops to avoid overflow when subtracting from typemin, and only use stops that were reached
+                    (critical_times_at_stops[:, destidx] .> typemin(Int32)) .&& (raptor_res[depidx].non_transfer_times_at_stops_each_round[end, :] .< MAX_TIME),
                     critical_times_at_stops[:, destidx] .- raptor_res[depidx].non_transfer_times_at_stops_each_round[end, :],
                     typemin(Int32)
-                ))
+                )
+
+            if all(critical_time_Δ .== typemin(Int32))
+                # no stops were reached, or are available
+                continue
+            end
+
+            egress_stop_this_dest = argmax(critical_time_Δ)
 
             time_at_stop = raptor_res[depidx].non_transfer_times_at_stops_each_round[end, egress_stop_this_dest]
             @assert time_at_stop < MAX_TIME

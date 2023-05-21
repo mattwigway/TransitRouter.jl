@@ -53,7 +53,7 @@
 
             # We also test reverse routing here. We do the same trip as the first two above, but make sure that we find a route that arrives
             # at the destination before the requested departure time.
-            revres = street_raptor(net, osrm, osrm, LatLon(34.4128, -119.8487), [LatLon(34.4224, -119.7032), LatLon(34.4226, -119.6777)], DateTime(2023, 5, 10, 8, 0), -1)
+            revres = street_raptor(net, osrm, osrm, LatLon(34.4128, -119.8487), [LatLon(34.4224, -119.7032), LatLon(34.4226, -119.6777)], DateTime(2023, 5, 10, 8, 0), -7200)
 
             @test all(revres.times_at_destinations_each_departure_time[begin, :] .≤  gt(8, 0))
             for dest in 1:2
@@ -61,6 +61,13 @@
                 @test revres.raptor_results[1].non_transfer_times_at_stops_each_round[end, egress_stop] +
                     round(Int32, revres.egress_geometries[(dest, egress_stop)].duration_seconds) == revres.times_at_destinations_each_departure_time[begin, dest]
             end
+
+            # make sure it doesn't ride forever 'neath the streets of Boston if there's no trip to be found (i.e. the departure minute just keeps getting earlier)
+            # now, the seconds of the destinations is not accessible by transit
+            revres2 = street_raptor(net, osrm, osrm, LatLon(34.4128, -119.8487), [LatLon(34.4224, -119.7032), LatLon(34.4561, -119.6819)], DateTime(2023, 5, 10, 8, 0), -7200)
+            @test revres2.times_at_destinations_each_departure_time[1, 1] ≤ gt(8, 0)
+            @test size(revres2.times_at_destinations_each_departure_time, 1) == 121 # search should have been cut off after 7200 seconds
+            @test all(revres2.times_at_destinations_each_departure_time[begin, 2] .== TransitRouter.MAX_TIME)
         end
     end
 end
