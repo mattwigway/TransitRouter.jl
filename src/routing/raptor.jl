@@ -99,7 +99,6 @@ function raptor(
     origins::Function,
     net::TransitNetwork,
     date::Date;
-    walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND,
     max_transfer_distance_meters=DEFAULT_MAX_LEG_WALK_DISTANCE_METERS,
     max_rides=DEFAULT_MAX_RIDES
     )
@@ -168,7 +167,7 @@ function raptor(
             end
         end
 
-        run_raptor!(net, result, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
+        run_raptor!(net, result, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
 
         empty_no_resize!(prev_touched_stops)
         empty_no_resize!(touched_stops)
@@ -184,7 +183,7 @@ function raptor(
     return result
 end
 
-function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides, services_running,
+function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, max_rides, services_running,
         prev_touched_stops::BitSet, touched_stops::BitSet)
 
     # convenience
@@ -369,9 +368,8 @@ function run_raptor!(net::TransitNetwork, result, walk_speed_meters_per_second, 
 
                 for xfer in net.transfers[stop]
                     if xfer.distance_meters <= max_transfer_distance_meters
-                        xfer_walk_time = Base.round(xfer.distance_meters / walk_speed_meters_per_second)
                         pre_xfer_time = non_transfer_times_at_stops[target, stop]
-                        time_after_xfer = pre_xfer_time + xfer_walk_time
+                        time_after_xfer = pre_xfer_time + round(Int32, xfer.duration_seconds)
                         dist_after_xfer = non_transfer_walk_distance_meters[target, stop] + round(Int32, xfer.distance_meters)
                         if time_after_xfer < times_at_stops[target, xfer.target_stop]
                             # transferring to this stop is optimal!

@@ -49,7 +49,6 @@ function street_raptor(
     max_access_distance_meters=1000.0,
     max_egress_distance_meters=1000.0,
     max_rides=4,
-    walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND,
     stop_to_destination_distances=nothing,
     stop_to_destination_durations=nothing
     )::StreetRaptorResult
@@ -108,10 +107,10 @@ function street_raptor(
 
     raptor_res = if time_window_length_seconds ≥ 0
         range_raptor(accessible_stops, net, Date(departure_date_time), time_window_length_seconds, 60;
-            walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
+            max_rides=max_rides)
     else
         range_raptor(accessible_stops, net, Date(departure_date_time);
-            walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides) do result, offset
+            max_rides=max_rides) do result, offset
 
             if offset < time_window_length_seconds
                 return true  # we've run out of time
