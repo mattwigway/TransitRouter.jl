@@ -40,7 +40,7 @@ function range_raptor(origins::Vector{StopAndTime}, net::TransitNetwork, date::D
     # copies the result into our RaptorResult array.
     raptor(net, date; kwargs...) do result, offset
         # save results of this departure time
-        if !isnothing(result) && offset ≤ time_window_length_seconds
+        if !isnothing(result)
             push!(results, deepcopy(result))
         end
 
