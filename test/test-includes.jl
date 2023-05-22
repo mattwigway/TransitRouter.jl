@@ -92,3 +92,7 @@ function test_no_updates_after_round(result, round)
         @test all(result.transfer_prev_stop[current_round] .== IM)
     end
 end
+
+get_routes(path) = map(x -> x.route.route_id, filter(x -> x.type == TransitRouter.transit, path))
+get_transit_times(path) = collect(Iterators.flatten(map(x -> (x.start_time, x.end_time), filter(x -> x.type == TransitRouter.transit, path))))
+
