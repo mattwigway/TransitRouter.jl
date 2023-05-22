@@ -5,6 +5,7 @@
     @struct_isequal TransitRouter.RaptorResult
     @struct_isequal TransitRouter.StreetRaptorResult
     @struct_isequal TransitRouter.AccessEgress
+    @struct_isequal TransitRouter.Leg
 
     # tests for streetraptor
     # don't run if OSRM binaries not available (currently not available on CI)
@@ -68,6 +69,18 @@
             @test revres2.times_at_destinations_each_departure_time[1, 1] ≤ gt(8, 0)
             @test size(revres2.times_at_destinations_each_departure_time, 1) == 121 # search should have been cut off after 7200 seconds
             @test all(revres2.times_at_destinations_each_departure_time[begin, 2] .== TransitRouter.MAX_TIME)
+
+            # if it rolls back to the previous day (negative times), make sure trace does not fail
+            revres3 = street_raptor(net, osrm, osrm, LatLon(34.4128, -119.8487), [LatLon(34.4224, -119.7032), LatLon(34.4226, -119.6777)], DateTime(2023, 5, 10, 0, 5), -TransitRouter.SECONDS_PER_DAY)
+
+            @test all(revres3.times_at_destinations_each_departure_time[begin, :] .≤  gt(0, 5))
+            for dest in 1:2
+                egress_stop = revres3.egress_stop_each_departure_time[begin, dest]
+                @test revres3.raptor_results[1].non_transfer_times_at_stops_each_round[end, egress_stop] +
+                    round(Int32, revres3.egress_geometries[(dest, egress_stop)].duration_seconds) == revres3.times_at_destinations_each_departure_time[begin, dest]
+            end
+
+            @snapshot_test "reverse_trace" trace_all_optimal_paths.(Ref(net), Ref(revres3), 1:2)
         end
     end
 end
