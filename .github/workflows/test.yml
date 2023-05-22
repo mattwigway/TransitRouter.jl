@@ -8,4 +8,4 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: "^1.8.0"
-      - run: julia --project -e 'import Pkg; Pkg.Registry.add(Pkg.RegistrySpec(url="https://github.com/mattwigway/PublicJuliaRegistry")); Pkg.Registry.add(); Pkg.instantiate(); Pkg.test()'
+      - run: julia --project -e 'import Pkg; Pkg.Registry.add(Pkg.RegistrySpec(url="https://github.com/mattwigway/PublicJuliaRegistry")); Pkg.Registry.add(); Pkg.instantiate(); Pkg.activate("test"); Pkg.instantiate(); Pkg.activate("."); Pkg.test()'
