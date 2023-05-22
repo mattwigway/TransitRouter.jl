@@ -1,9 +1,5 @@
 # StreetRaptor combines RAPTOR with a street search from a geographic origin to a geographic destination
 
-# New StreetRaptor result format, for range-RAPTOR:
-# access_geom_for_stop: Geoemtry to access a stop
-# access_
-
 """
 Contains information about an access or egress leg.
 """
