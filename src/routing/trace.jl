@@ -27,9 +27,11 @@ function trace_path(net::TransitNetwork, res::RaptorResult, stop::Int64)::Vector
         prev_trip_idx != INT_MISSING || error("For stop $current_stop, round $round, no previous trip")
         prev_time = res.prev_boardtime[round, current_stop]
         prev_trip = net.trips[prev_trip_idx]
-        st1 = findfirst(st -> st.stop == prev_stop && st.departure_time == prev_time, prev_trip.stop_times)
+        # Modulo by seconds_per_day, because of overnight routing. This is not 100% correct but it is unlikely any trip will have stops at the
+        # same stop exactly 24 hours apart.
+        st1 = findfirst(st -> st.stop == prev_stop && st.departure_time % SECONDS_PER_DAY == prev_time % SECONDS_PER_DAY, prev_trip.stop_times)
         @assert !isnothing(st1)
-        st2 = findfirst(st -> st.stop == current_stop && st.arrival_time == time_after_round, prev_trip.stop_times)
+        st2 = findfirst(st -> st.stop == current_stop && st.arrival_time % SECONDS_PER_DAY == time_after_round % SECONDS_PER_DAY, prev_trip.stop_times)
         @assert !isnothing(st2)
         geom = geom_between(prev_trip, net, prev_trip.stop_times[st1], prev_trip.stop_times[st2])
         transit_leg = Leg(

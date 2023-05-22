@@ -14,9 +14,6 @@
 # Through RAPTOR transfer compression, we should get only the trips on F that require the minimum wait at I.
 
 @testitem "StreetRaptor trace" begin
-    get_routes(path) = map(x -> x.route.route_id, filter(x -> x.type == TransitRouter.transit, path))
-    get_transit_times(path) = collect(Iterators.flatten(map(x -> (x.start_time, x.end_time), filter(x -> x.type == TransitRouter.transit, path))))
-
     include("../test-includes.jl")
 
     if !success(`which osrm-extract`)
