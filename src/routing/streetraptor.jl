@@ -1,27 +1,50 @@
 # StreetRaptor combines RAPTOR with a street search from a geographic origin to a geographic destination
 
+"""
+Contains information about an access or egress leg.
+"""
+struct AccessEgress
+    geometry::Vector{LatLon{Float64}}
+    distance_meters::Float64
+    duration_seconds::Float64
+    weight::Float64
+end
+
+"""
+Contains the result of a StreetRaptor search, including enough information to construct paths.
+- `times_at_destinations_each_departure_time`: matrix indexed by [departure time, destination] containing the earliest arrival at
+    each destination for each departure_time
+- `egress_stop_each_departure_time`: matrix indexed by [departure time, destination] containing the stop ID of the egress stop
+    for the destination
+- `raptor_results` - Vector of RaptorResults for each departure minute
+- `access_geometries` - Dict of AccessEgree entries for access, indexed by stop
+- `egress_geometries` - Dict indexed by (destination ID, stop ID) of geometry to access that destination from the given stop
+
+"""
 struct StreetRaptorResult
-    times_at_destinations::Vector{Int32}
-    egress_stop_for_destination::Vector{Int64}
-    access_geom_for_destination::Vector{Union{Nothing, Vector{LatLon{Float64}}}}
-    access_dist_for_destination::Vector{Float64}
-    egress_geom_for_destination::Vector{Union{Nothing, Vector{LatLon{Float64}}}}
-    egress_dist_for_destination::Vector{Float64}
-    raptor_result::RaptorResult
+    times_at_destinations_each_departure_time::Matrix{Int32}
+    egress_stop_each_departure_time::Matrix{Int64}
+    raptor_results::Vector{RaptorResult}
+    access_geometries::Dict{Int64, AccessEgress}
+    egress_geometries::Dict{NTuple{2, Int64}, AccessEgress}
     departure_date_time::DateTime
 end
 
+"""
+If time_window_length_seconds is negative, will perform a range raptor search _ending_ at the requested departure time, and starting up to time_window_length_seconds
+earlier, or at the first time path to all destinations is possible (whichever is later).
+"""
 function street_raptor(
     net::TransitNetwork,
     access_router::OSRMInstance,
     egress_router::OSRMInstance,
     origin::LatLon{<:Real},
     destinations::AbstractVector{<:LatLon{<:Real}},
-    departure_date_time::DateTime;
+    departure_date_time::DateTime,
+    time_window_length_seconds::Union{Function, Int64}=0;
     max_access_distance_meters=1000.0,
     max_egress_distance_meters=1000.0,
     max_rides=4,
-    walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND,
     stop_to_destination_distances=nothing,
     stop_to_destination_durations=nothing
     )::StreetRaptorResult
@@ -36,6 +59,8 @@ function street_raptor(
 
     departure_time = time_to_seconds_since_midnight(departure_date_time)
 
+    access_geoms = Dict{Int64, AccessEgress}()
+
     accessible_stops = Vector{StopAndTime}()
     for stop_near_origin_idx in eachindex(stops_near_origin)
         stop_idx = stops_near_origin[stop_near_origin_idx]
@@ -44,114 +69,99 @@ function street_raptor(
         dist = access.distances[1, stop_near_origin_idx]
 
         if dist <= max_access_distance_meters
-            push!(accessible_stops, StopAndTime(stop_idx, round(time)))
+            push!(accessible_stops, StopAndTime(stop_idx, round(time), round(dist)))
+            stop = net.stops[stop_idx]
+            r = route(access_router, origin, LatLon(stop.stop_lat, stop.stop_lon))
+            access_geoms[stop_idx] = AccessEgress(r[1].geometry, r[1].distance_meters, r[1].duration_seconds, r[1].weight)
         end
     end
 
     @debug "$(length(accessible_stops)) stops found near origin"
+
+    @debug "finding stops near destination"
+
+    # once there is at least one stop in each column that is less than the specified value,
+    # we are done
+    # TODO different arrival times per-destination
+    critical_times_at_stops = fill(typemin(Int32), (length(net.stops), length(destinations)))
+    egress_geometry = Dict{NTuple{2, Int64}, AccessEgress}()
+
+    for destidx in eachindex(destinations)
+        stops_near_destination = bbox_filter(destinations[destidx], stop_coords, max_egress_distance_meters)
+
+        for stop in stops_near_destination
+            r = route(egress_router, stop_coords[stop], destinations[destidx])
+            if !isempty(r)
+                egress_geometry[(destidx, stop)] = AccessEgress(r[1].geometry, r[1].distance_meters, r[1].duration_seconds, r[1].weight)
+                critical_times_at_stops[stop, destidx] = departure_time - round(Int32, r[1].duration_seconds)
+            end
+        end
+    end
+
     @debug "begin transit routing"
 
-    raptor_res = raptor(net, accessible_stops, Date(departure_date_time);
-        walk_speed_meters_per_second=walk_speed_meters_per_second, max_rides=max_rides)
 
-    @debug "transit routing complete. adding egress times."
-    times_at_destinations::Vector{Int32} = fill(MAX_TIME, length(destinations))
-    egress_stops::Vector{Int64} = fill(INT_MISSING, length(destinations))
-    egress_geoms::Vector{Union{Nothing, Vector{LatLon{Float64}}}} = fill(nothing, length(destinations))
-    egress_dists::Vector{Float64} = fill(NaN, length(destinations))
+    raptor_res = if time_window_length_seconds ≥ 0
+        range_raptor(accessible_stops, net, Date(departure_date_time), time_window_length_seconds, 60;
+            max_rides=max_rides)
+    else
+        range_raptor(accessible_stops, net, Date(departure_date_time);
+            max_rides=max_rides) do result, offset
 
-    for stopidx in eachindex(net.stops)
-        time_at_stop = raptor_res.non_transfer_times_at_stops_each_round[end, stopidx]
-        if time_at_stop < MAX_TIME
-            for destidx in eachindex(destinations)
-                if !isnothing(stop_to_destination_distances) && !isnothing(stop_to_destination_durations)
-                    if stop_to_destination_distances[stopidx, destidx] > 0 && stop_to_destination_distances[stopidx, destidx] < max_egress_distance_meters
-                        time_at_dest = time_at_stop + round(stop_to_destination_durations[stopidx, destidx])
-                        if time_at_dest < times_at_destinations[destidx]
-                            times_at_destinations[destidx] = round(time_at_dest)
-                            egress_stops[destidx] = stopidx
-                            egress_dists[destidx] = stop_to_destination_distances[stopidx, destidx]
-                        end
-                    end
-                else
-                    # check if it's nearby
-                    crow_flies_distance_to_dest = euclidean_distance(stop_coords[stopidx], destinations[destidx])
-                    if crow_flies_distance_to_dest <= max_egress_distance_meters && time_at_stop < times_at_destinations[destidx]
-                        # it's nearby, get network distance. TODO if multiple destinations are close by, could route to all at once
-                        # other condition is optimization - if there's another way to the destination faster than the route to this
-                        # stop, no way it could be optimal way to get to that destination since egress time is nonnegative
-                        routes_to_dest = route(egress_router, stop_coords[stopidx], destinations[destidx])
-                        # need to check this again, horse-flies distance may be longer than limit even if
-                        if !isempty(routes_to_dest)
-                            route_to_dest = routes_to_dest[1]
-                            if route_to_dest.distance_meters < max_egress_distance_meters
-                                time_at_dest = time_at_stop + route_to_dest.duration_seconds
-                                if time_at_dest < times_at_destinations[destidx]
-                                    times_at_destinations[destidx] = round(time_at_dest)
-                                    egress_stops[destidx] = stopidx
-                                    egress_geoms[destidx] = route_to_dest.geometry
-                                    egress_dists[destidx] = route_to_dest.distance_meters
-                                end
-                            end
-                        end
-                    end
+            if offset < time_window_length_seconds
+                return true  # we've run out of time
+            end
+                
+            for destidx in 1:length(destinations)
+                if all(result.non_transfer_times_at_stops_each_round[end, :] .> critical_times_at_stops[:, destidx])
+                    # none of the stops have been reached soon enough, routing needs to continue to an
+                    # earlier minute.
+                    # don't stop (me now, cause I'm havin a good time, havin a good time)
+                    return false
                 end
             end
+
+            # if we got here, we've found a route to every destination - stop routing
+            # stop! (in the name of love)
+            return true
         end
-    end
+    end     
 
-    access_geoms, access_dists = find_access_geoms(net, access_router, egress_stops, raptor_res, origin)
 
-    return StreetRaptorResult(times_at_destinations, egress_stops, access_geoms, access_dists, egress_geoms, egress_dists, raptor_res, departure_date_time)
-end
+    @debug "transit routing complete. adding egress times."
+    times_at_destinations::Matrix{Int32} = fill(MAX_TIME, (length(raptor_res), length(destinations)))
+    egress_stops::Matrix{Int32} = fill(INT_MISSING, (length(raptor_res), length(destinations)))
 
-# Find the geometries to access transit based on the access stops that were actually used for
-# each destination
-function find_access_geoms(net, osrm, egress_stops, raptor_res, origin)
-    access_geom_dict = Dict{Int64, Vector{LatLon{Float64}}}()
-    access_dist_dict = Dict{Int64, Float64}()
+    for depidx in eachindex(raptor_res)
+        for destidx in eachindex(destinations)
+            # egress stop is the one that gives us the best arrival time, i.e. the largest delta between
+            # the critical time and the actual time at the stop. This holds even for forward searches; the
+            # critical time is the time you would have to reach each stop to get to the destination at the
+            # departure time. The reached time will always be greater than the critical time in a forward search,
+            # but the largest (closest to zero) delta is still the one that gives the best arrival time.
+            critical_time_Δ =
+                ifelse.(
+                     # only use ones that were critical stops to avoid overflow when subtracting from typemin, and only use stops that were reached
+                    (critical_times_at_stops[:, destidx] .> typemin(Int32)) .&& (raptor_res[depidx].non_transfer_times_at_stops_each_round[end, :] .< MAX_TIME),
+                    critical_times_at_stops[:, destidx] .- raptor_res[depidx].non_transfer_times_at_stops_each_round[end, :],
+                    typemin(Int32)
+                )
 
-    access_geoms = Union{Nothing, Vector{LatLon{Float64}}}[]
-    access_dists = Float64[]
-
-    for egress_stop in egress_stops
-        # find the access stop for this egress stop
-        if egress_stop == INT_MISSING
-            push!(access_geoms, nothing)
-            push!(access_dists, NaN)
-            continue
-        end
-
-        access_stop = egress_stop
-        for idx in size(raptor_res.prev_stop, 1):-1:1
-            prev = raptor_res.prev_stop[idx, access_stop]
-            if prev == INT_MISSING
+            if all(critical_time_Δ .== typemin(Int32))
+                # no stops were reached, or are available
                 continue
-            else
-                access_stop = prev
             end
 
-            # handle a transfer
-            if idx > 1 && raptor_res.transfer_prev_stop[idx - 1, access_stop] != INT_MISSING
-                access_stop = raptor_res.transfer_prev_stop[idx - 1, access_stop]
-            end
-        end
+            egress_stop_this_dest = argmax(critical_time_Δ)
 
-        if haskey(access_geom_dict, access_stop)
-            push!(access_geoms, access_geom_dict[access_stop])
-            push!(access_dists, access_dist_dict[access_stop])
-        else
-            # compute the geometry
-            access_stop_location = LatLon(net.stops[access_stop].stop_lat, net.stops[access_stop].stop_lon)
-            routes = route(osrm, origin, access_stop_location)
-            !isempty(routes) || error("No route found to stop $access_stop in access geometry search, but it was found in access search!")
-            r = first(routes)
-            access_geom_dict[access_stop] = r.geometry
-            access_dist_dict[access_stop] = r.distance_meters
-            push!(access_geoms, r.geometry)
-            push!(access_dists, r.distance_meters)
+            time_at_stop = raptor_res[depidx].non_transfer_times_at_stops_each_round[end, egress_stop_this_dest]
+            @assert time_at_stop < MAX_TIME
+            time_at_dest = time_at_stop + round(Int32, egress_geometry[(destidx, egress_stop_this_dest)].duration_seconds)
+            
+            egress_stops[depidx, destidx] = egress_stop_this_dest
+            times_at_destinations[depidx, destidx] = time_at_dest
         end
     end
 
-    return access_geoms, access_dists
+    return StreetRaptorResult(times_at_destinations, egress_stops, raptor_res, access_geoms, egress_geometry, departure_date_time)
 end

@@ -7,7 +7,9 @@
 
 # This test is currently broken due to the implementation of overnight routing.
 # plaes where we expect to not find a route, we find a route that involves waiting until tomorrow.
-@testset "RAPTOR service running" begin
+@testitem "RAPTOR service running" begin
+    include("../test-includes.jl")
+
     gtfs = MockGTFS()
     sids = [add_stop!(gtfs) for i in 1:3]
     rids = [add_route!(gtfs) for i in 1:3]
@@ -59,7 +61,7 @@
         @test weekday_result.prev_stop[:, s1] == fill(INT_MISSING, 5)
         @test get_route.(weekday_result.prev_trip[:, s1], Ref(net)) == fill(INT_MISSING, 5)
         @test weekday_result.prev_boardtime[:, s1] == fill(INT_MISSING, 5)
-        @test weekday_result.transfer_prev_stop[:, s1] == fill(INT_MISSING, 5)
+        @test weekday_result.transfer_prev_stop[:, s1] == fill(INT_MISSING, 4)
 
         # Stop 2: accessed via transit round 2
         @test weekday_result.times_at_stops_each_round[:, s2] == [MAX_TIME, fill(gt(8, 40), 3)...]
@@ -67,7 +69,7 @@
         @test weekday_result.prev_stop[:, s2] == [INT_MISSING, s1, fill(INT_MISSING, 3)...]
         @test get_route.(weekday_result.prev_trip[:, s2], Ref(net)) == [INT_MISSING, ra, fill(INT_MISSING, 3)...]
         @test weekday_result.prev_boardtime[:, s2] == [INT_MISSING, gt(8, 0), fill(INT_MISSING, 3)...]
-        @test weekday_result.transfer_prev_stop[:, s2] == fill(INT_MISSING, 5)
+        @test weekday_result.transfer_prev_stop[:, s2] == fill(INT_MISSING, 4)
 
         # Stop 3: accessed via transit round 2 (via route c)
         @test weekday_result.times_at_stops_each_round[:, s3] == [MAX_TIME, fill(gt(8, 45), 3)...]
@@ -75,7 +77,7 @@
         @test weekday_result.prev_stop[:, s3] == [INT_MISSING, s1, fill(INT_MISSING, 3)...]
         @test get_route.(weekday_result.prev_trip[:, s3], Ref(net)) == [INT_MISSING, rc, fill(INT_MISSING, 3)...]
         @test weekday_result.prev_boardtime[:, s3] == [INT_MISSING, gt(8, 5), fill(INT_MISSING, 3)...]
-        @test weekday_result.transfer_prev_stop[:, s3] == fill(INT_MISSING, 5)
+        @test weekday_result.transfer_prev_stop[:, s3] == fill(INT_MISSING, 4)
 
 
         ###################
@@ -88,7 +90,7 @@
         @test weekend_result.prev_stop[:, s1] == fill(INT_MISSING, 5)
         @test get_route.(weekend_result.prev_trip[:, s1], Ref(net)) == fill(INT_MISSING, 5)
         @test weekend_result.prev_boardtime[:, s1] == fill(INT_MISSING, 5)
-        @test weekend_result.transfer_prev_stop[:, s1] == fill(INT_MISSING, 5)
+        @test weekend_result.transfer_prev_stop[:, s1] == fill(INT_MISSING, 4)
 
         # Stop 2: accessed via transit round 2
         @test weekend_result.times_at_stops_each_round[:, s2] == [MAX_TIME, fill(gt(8, 40), 3)...]
@@ -96,7 +98,7 @@
         @test weekend_result.prev_stop[:, s2] == [INT_MISSING, s1, fill(INT_MISSING, 3)...]
         @test get_route.(weekend_result.prev_trip[:, s2], Ref(net)) == [INT_MISSING, ra, fill(INT_MISSING, 3)...]
         @test weekend_result.prev_boardtime[:, s2] == [INT_MISSING, gt(8, 0), fill(INT_MISSING, 3)...]
-        @test weekend_result.transfer_prev_stop[:, s2] == fill(INT_MISSING, 5)
+        @test weekend_result.transfer_prev_stop[:, s2] == fill(INT_MISSING, 4)
 
         # Stop 3: accessed via transit round 3 (via route b)
         @test weekend_result.times_at_stops_each_round[:, s3] == [MAX_TIME, MAX_TIME, gt(9, 35), gt(9, 35)]
@@ -104,7 +106,7 @@
         @test weekend_result.prev_stop[:, s3] == [INT_MISSING, INT_MISSING, s2, fill(INT_MISSING, 2)...]
         @test get_route.(weekend_result.prev_trip[:, s3], Ref(net)) == [INT_MISSING, INT_MISSING, rb, fill(INT_MISSING, 2)...]
         @test weekend_result.prev_boardtime[:, s3] == [INT_MISSING, INT_MISSING, gt(8, 55), fill(INT_MISSING, 2)...]
-        @test weekend_result.transfer_prev_stop[:, s3] == fill(INT_MISSING, 5)
+        @test weekend_result.transfer_prev_stop[:, s3] == fill(INT_MISSING, 4)
 
         # July 4 results should be same as weekend results
         @test removed_weekday.times_at_stops_each_round == weekend_result.times_at_stops_each_round

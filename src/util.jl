@@ -81,6 +81,11 @@ function seconds_since_midnight_to_datetime(date, secs)
     )
 end
 
+latlon_to_geojson(ll) = Dict("type"=>"Feature", "properties"=>Dict(), "geometry"=>Dict(
+    "type"=>"LineString",
+    "coordinates" => map(x -> [x.lon, x.lat], ll)
+))
+
 # primes are used in hashing
 # these are from https://primes.utm.edu/lists/small/1000.txt
 const primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 

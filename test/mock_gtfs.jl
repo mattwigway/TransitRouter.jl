@@ -28,7 +28,9 @@ const GTFSStopTime = @NamedTuple{
     stop_id::String,
     arrival_time::String,
     departure_time::String,
-    stop_sequence::Int64
+    stop_sequence::Int64,
+    pickup_type::String,
+    drop_off_type::String
 }
 
 const GTFSCalendar = @NamedTuple{
@@ -129,14 +131,16 @@ function add_trip!(o::MockGTFS, route_id, service_id, stops_and_times; shape_id=
 
     stop_seq = 1
     for stop_and_time in stops_and_times
-        stop_id, arrival_time, departure_time = if length(stop_and_time) == 3
+        stop_id, arrival_time, departure_time, pickup_type, drop_off_type = if length(stop_and_time) == 5
             stop_and_time
+        elseif length(stop_and_time) == 3
+            (stop_and_time..., "", "")
         else
             # arrival/departure the same
-            stop_and_time[1], stop_and_time[2], stop_and_time[2]
+            stop_and_time[1], stop_and_time[2], stop_and_time[2], "", ""
         end
 
-        push!(o.stop_times, GTFSStopTime((trip_id, stop_id, arrival_time, departure_time, stop_seq)))
+        push!(o.stop_times, GTFSStopTime((trip_id, stop_id, arrival_time, departure_time, stop_seq, repr(pickup_type), repr(drop_off_type))))
 
         # make them monotonically increasing, but not consecutive
         stop_seq *= 2

@@ -24,7 +24,9 @@ Stop 3 is reached twice in the first transit round, once directly and once via a
 transfer. Both should be retained.
 
  =#
-@testset "Transfer and direct" begin
+@testitem "Transfer and direct" begin
+    include("../test-includes.jl")
+
     gtfs = MockGTFS()
 
     s1id = add_stop!(gtfs, 37.363, -122.123)

@@ -23,6 +23,6 @@ include("routing/routing.jl")
 
 export Service, Stop, TransitNetwork, TripPattern, build_network, save_network, load_network,
     RaptorRequest, StopAndTime, raptor, street_raptor, StreetRaptorRequest, StreetRaptorResult,
-    EgressTimes, find_egress_times, trace_path
+    EgressTimes, find_egress_times, trace_path, trace_all_optimal_paths, range_raptor
 
 end

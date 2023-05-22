@@ -2,17 +2,18 @@
 # Described in Delling, D., Pajor, T., & Werneck, R. (2012). Round-Based Public Transit Routing. http://research.microsoft.com/pubs/156567/raptor_alenex.pdf
 
 const MAX_TIME = typemax(Int32)
-const XFER_ROUTE = -1
 const INT_MISSING = -2
-const ORIGIN = -3
-const BOARD_SLACK_SECONDS = 60
+const BOARD_SLACK_SECONDS = convert(Int32, 60)
 const EMPTY_SET = BitSet()
 const OFFSETS = (yesterday=-SECONDS_PER_DAY, today=0, tomorrow=SECONDS_PER_DAY)
 
 struct StopAndTime
     stop::Int64
     time::Int32
+    walk_distance_meters::Int64
 end
+
+StopAndTime(stop, time) = StopAndTime(stop, time, 0)
 
 """
 Contains the results of a RAPTOR search.
@@ -32,6 +33,11 @@ Contains the results of a RAPTOR search.
 
   Non-transfer times at stops are propagated forward, so a stop reached in round 2 will still be present with the same time
   in round 3, unless a faster way has been found.
+
+- `walk_distance_meters[i, j]` is the walk distance corresponding to the route in time_at_stops_each_round. Walk distance
+  is used as a tiebreaker when multiple routes get you on the same vehicle.
+
+- `non_transfer_walk_distance_meters[i, j]` is similar for the route coresponding to the time in non_transfer_times_at_stops_each_round.
 
 - `prev_stop[i, j]` is the stop where the passenger boarded the transit vehicle that delivered
   them to stop j in round i. This only reflects stops reached via transit; if the stop was reached via
@@ -67,6 +73,8 @@ Contains the results of a RAPTOR search.
 struct RaptorResult
     times_at_stops_each_round::Array{Int32, 2} 
     non_transfer_times_at_stops_each_round::Array{Int32, 2}
+    walk_distance_meters::Matrix{Int32}
+    non_transfer_walk_distance_meters::Matrix{Int32}
     prev_stop::Array{Int64, 2}
     transfer_prev_stop::Matrix{Int64}
     prev_trip::Array{Int64, 2}
@@ -80,11 +88,17 @@ function empty_no_resize!(s::BitSet)
     end
 end
 
+# old API
+#@deprecate
+raptor(net, origins::Vector{StopAndTime}, date::Date; kwargs...) = raptor(origins, net, date; kwargs...)
+
+raptor(origins::Vector{StopAndTime}, net, date::Date; kwargs...) =
+    raptor((r, v) -> (isnothing(r) ? (origins, nothing) : nothing), net, date; kwargs...)
+
 function raptor(
+    origins::Function,
     net::TransitNetwork,
-    origins::Vector{StopAndTime},
     date::Date;
-    walk_speed_meters_per_second=DEFAULT_WALK_SPEED_METERS_PER_SECOND,
     max_transfer_distance_meters=DEFAULT_MAX_LEG_WALK_DISTANCE_METERS,
     max_rides=DEFAULT_MAX_RIDES
     )
@@ -96,8 +110,10 @@ function raptor(
     # last times at stops not used, no transfer phase
     times_at_stops::Array{Int32,2} = fill(MAX_TIME, (nrounds - 1, nstops))
     non_transfer_times_at_stops::Array{Int32, 2} = fill(MAX_TIME, (nrounds, nstops))
+    walk_distance_meters::Matrix{Int32} = fill(INT_MISSING, (nrounds - 1, nstops))
+    non_transfer_walk_distance_meters::Matrix{Int32} = fill(INT_MISSING, (nrounds, nstops))
     prev_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
-    transfer_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
+    transfer_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds - 1, nstops))
     prev_trip::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_boardtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
     # set bit 0 so that offset is forced to zero and there aren't allocations later
@@ -109,12 +125,6 @@ function raptor(
     # unset the 0 set bits that were to force offset
     delete!(prev_touched_stops, 0)
     delete!(touched_stops, 0)
-
-    # initialize times at stops
-    for sat in origins
-        times_at_stops[1, sat.stop] = sat.time
-        push!(prev_touched_stops, sat.stop)
-    end
 
     @assert prev_touched_stops.offset == 0
     @assert touched_stops.offset == 0
@@ -131,131 +141,240 @@ function raptor(
 
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
     # a bounded bitset implementation that did not dynamically resize.
-    run_raptor!(net, times_at_stops, non_transfer_times_at_stops, prev_stop, transfer_stop, prev_trip, prev_boardtime, walk_speed_meters_per_second,
-        max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
-
-    return RaptorResult(
+    result = RaptorResult(
         times_at_stops,
         non_transfer_times_at_stops,
+        walk_distance_meters,
+        non_transfer_walk_distance_meters,
         prev_stop,
         transfer_stop,
         prev_trip,
         prev_boardtime,
         date
     )
+
+    
+    # get initial times at stops
+    origin_times, val = origins(nothing, nothing)
+    while true
+        # initialize times at stops
+        for sat in origin_times
+            if sat.time < times_at_stops[1, sat.stop]
+                times_at_stops[1, sat.stop] = sat.time
+                walk_distance_meters[1, sat.stop] = sat.walk_distance_meters
+                transfer_stop[1, sat.stop] = INT_MISSING
+                push!(prev_touched_stops, sat.stop)
+            end
+        end
+
+        run_raptor!(net, result, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
+
+        empty_no_resize!(prev_touched_stops)
+        empty_no_resize!(touched_stops)
+
+        nextstops = origins(result, val)
+        if isnothing(nextstops)
+            break
+        else
+            origin_times, val = nextstops
+        end
+    end
+
+    return result
 end
 
-function run_raptor!(net::TransitNetwork, times_at_stops::Array{Int32, 2}, non_transfer_times_at_stops::Array{Int32, 2}, prev_stop::Array{Int64, 2}, transfer_prev_stop,
-    prev_trip::Array{Int64, 2}, prev_boardtime::Array{Int32, 2}, walk_speed_meters_per_second, max_transfer_distance_meters, max_rides,
-    services_running, prev_touched_stops::BitSet, touched_stops::BitSet)
-    for round in 1:max_rides
+function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, max_rides, services_running,
+        prev_touched_stops::BitSet, touched_stops::BitSet)
+
+    # convenience
+    times_at_stops = result.times_at_stops_each_round
+    non_transfer_times_at_stops = result.non_transfer_times_at_stops_each_round
+    walk_distance_meters = result.walk_distance_meters
+    non_transfer_walk_distance_meters = result.non_transfer_walk_distance_meters
+    prev_stop = result.prev_stop
+    transfer_prev_stop = result.transfer_prev_stop
+    prev_trip = result.prev_trip
+    prev_boardtime = result.prev_boardtime
+
+    touched_patterns = BitSet()
+
+    for current_round in 1:max_rides
         # where the results of this round will be recorded
-        target = round + 1
+        target = current_round + 1
 
-        # preinitialize times with times from previous round
-        non_transfer_times_at_stops[target, :] = non_transfer_times_at_stops[target - 1, :]
-
-        for stop in prev_touched_stops
-            # find all patterns that touch this stop
-            # optimization: mark patterns, then loop over patterns instead of stops
-            for patidx in net.patterns_for_stop[stop]
-
-                # explore patterns thrice, once for yesterday, today and tomorrow
-                tp = net.patterns[patidx]
-
-                for day in (:yesterday, :today, :tomorrow)
-                    if tp.service ∉ services_running[day]
-                        continue
-                    end
-
-                    stop_time_offset = OFFSETS[day]
-
-                    # possible optimization: skip trip patterns that don't run after departure time
-                    # (most patterns from yesterday will get skipped)
-
-                    # TODO handle loop trips
-                    stoppos = INT_MISSING
-
-                    # not using a vectorized findfirst to avoid allocations
-                    for (i, tpstop) in enumerate(tp.stops)
-                        if tpstop == stop
-                            stoppos = i
-                            break
-                        end
-                    end
-
-                    @assert stoppos != INT_MISSING
-
-                    # find the trip that departs at or after the earliest possible departure
-                    # use times_at_stops; allow transfers
-                    earliest_departure::Int32 = times_at_stops[target - 1, stop] + BOARD_SLACK_SECONDS
-                    best_departure::Int32 = MAX_TIME
-                    best_trip_idx::Int64 = INT_MISSING
-
-                    for tripidx in net.trips_for_pattern[patidx]
-                        trip = net.trips[tripidx]
-                        time_at_stop = trip.stop_times[stoppos].departure_time + stop_time_offset
-                        if (time_at_stop >= earliest_departure && time_at_stop < best_departure)
-                            best_trip_idx = tripidx
-                            best_departure = time_at_stop
-                            # pre-sorting trips by departure time would allow us to break here, but I think we found in R5 that it didn't really help
-                        end
-                    end
-
-                    if best_trip_idx == INT_MISSING
-                        continue  # no possible trip to board
-                    end
-
-                    best_trip = net.trips[best_trip_idx]
-
-                    for stidx in stoppos + 1:length(best_trip.stop_times)
-                        stop_time = best_trip.stop_times[stidx]
-                        if stop_time.arrival_time + stop_time_offset < non_transfer_times_at_stops[target, stop_time.stop]
-                            # we have found a new fastest way to get to this stop!
-                            non_transfer_times_at_stops[target, stop_time.stop] = stop_time.arrival_time + stop_time_offset
-                            prev_stop[target, stop_time.stop] = stop
-                            prev_trip[target, stop_time.stop] = best_trip_idx
-                            prev_boardtime[target, stop_time.stop] = best_trip.stop_times[stoppos].departure_time + stop_time_offset
-                            push!(touched_stops, stop_time.stop)
-                        end
-                    end
-
-                    # possible optimization: if we rode the pattern today, don't check for tomorrow
-                    # might need to add some checks to make sure that services are non-overlapping
-                    # i.e. there isn't a service from today that starts at 24:30 after the 00:10 service
-                    # tomorrow starts. Checking that the hours are always >= 0 and every trip has a first
-                    # departure time < 24 would be mostly sufficient - overtaking trips notwithstanding
-                    # but that would cut computation roughly in half, so we might be okay with overtaking trips
-                    # not working across service days.
-                end # today/tomorrow loop
+        # preinitialize times with times from previous round, or from later minute
+        for stop in eachindex(net.stops)
+            # skip on last round, no transfers
+            if current_round != max_rides && times_at_stops[current_round, stop] < times_at_stops[target, stop]
+                # copy forward times and clear transfer information
+                # not clearing transit path information as that is associated with non-transfer times
+                times_at_stops[target, stop] = times_at_stops[current_round, stop]
+                walk_distance_meters[target, stop] = walk_distance_meters[current_round, stop]
+                transfer_prev_stop[target, stop] = INT_MISSING
             end
-        end # loop over prev_touched_stop
 
-        @debug "round $round found $(length(touched_stops)) stops accessible by transit"
+            if non_transfer_times_at_stops[current_round, stop] < non_transfer_times_at_stops[target, stop]
+                # copy forward non-transfer times and clear transit information
+                non_transfer_times_at_stops[target, stop] = non_transfer_times_at_stops[current_round, stop]
+                non_transfer_walk_distance_meters[target, stop] = non_transfer_walk_distance_meters[current_round, stop]
+                prev_stop[target, stop] = INT_MISSING
+                prev_boardtime[target, stop] = INT_MISSING
+                prev_trip[target, stop] = INT_MISSING
+            end
+        end
+
+        # find all patterns that were touched
+        empty_no_resize!(touched_patterns)
+        for stop in prev_touched_stops
+            for pat in net.patterns_for_stop[stop]
+                push!(touched_patterns, pat)
+            end
+        end
+
+        # find all patterns that touch this stop
+        # optimization: mark patterns, then loop over patterns instead of stops
+        for patidx in touched_patterns
+
+            # explore patterns thrice, once for yesterday, today and tomorrow
+            tp = net.patterns[patidx]
+
+            for day in (
+                    :yesterday, # all my problems seemed so far away 
+                    :today, # while the blossoms still cling to the vine
+                    :tomorrow # tomorrow, I love you, tomorrow, you're always a day away
+                )
+                if tp.service ∉ services_running[day]
+                    continue
+                end
+
+                stop_time_offset = OFFSETS[day]
+
+                # possible optimization: skip trip patterns that don't run after departure time
+                # (most patterns from yesterday will get skipped)
+
+                # find the trip that departs at or after the earliest possible departure
+                # use times_at_stops; allow transfers
+                current_tripidx = nothing
+                current_trip = nothing
+                current_boardstop = nothing
+                current_boardtime = nothing
+                
+                for (stopidx, stop) in enumerate(tp.stops)
+                    # get the current arrival and departure times at this stop
+                    current_trip_arrival_time, current_trip_departure_time = if !isnothing(current_trip)
+                        current_trip.stop_times[stopidx].arrival_time + stop_time_offset, current_trip.stop_times[stopidx].departure_time + stop_time_offset
+                    else
+                        nothing, nothing
+                    end
+
+                    # see if it makes sense to alight
+                    # do this before boarding, because you might have a situation where one path rides A->B and another rides B->C
+                    if !isnothing(current_trip) && tp.drop_off_types[stopidx] != PickupDropoffType.NotAvailable
+                        # see if it's (strictly) better - strict so more-transfer trips don't replace fewer-transfer trips
+                        if current_trip_arrival_time + stop_time_offset < non_transfer_times_at_stops[target, stop]
+                            non_transfer_times_at_stops[target, stop] = current_trip_arrival_time
+                            prev_stop[target, stop] = current_boardstop
+                            prev_trip[target, stop] = current_tripidx
+                            prev_boardtime[target, stop] = current_boardtime
+                            non_transfer_walk_distance_meters[target, stop] = walk_distance_meters[target - 1, current_boardstop]
+                            push!(touched_stops, stop)
+                        end
+                    end
+
+
+                    # see if we can board
+                    # if we're at a stop reached in the previous round, and we haven't boarded this pattern yet, see if we can board
+                    # if we're on board, try to board an earlier trip if the best time to the stop is before the current trip departure time
+                    if stop ∈ prev_touched_stops &&
+                            (isnothing(current_trip) || times_at_stops[target - 1, stop] ≤ current_trip_departure_time - BOARD_SLACK_SECONDS) &&
+                            tp.pickup_types[stopidx] != PickupDropoffType.NotAvailable
+                        candidate_arrival_time = times_at_stops[target - 1, stop]
+                        @assert candidate_arrival_time < MAX_TIME
+                        earliest_board_time = candidate_arrival_time + BOARD_SLACK_SECONDS
+                        best_candidate = nothing
+                        best_candidate_departure_time = nothing
+                        for tripidx in net.trips_for_pattern[patidx]
+                            candidate_trip = net.trips[tripidx]
+                            candidate_departure_time = candidate_trip.stop_times[stopidx].departure_time + stop_time_offset
+                            if earliest_board_time ≤ candidate_departure_time && (isnothing(best_candidate) || candidate_departure_time < best_candidate_departure_time)
+                                best_candidate = tripidx
+                                best_candidate_departure_time = candidate_departure_time
+                            end
+                        end
+
+                        # if we touched this stop and it had a time at the stop early enough to run this loop,
+                        # we should at least be able to board this trip
+                        @assert isnothing(current_trip) || best_candidate_departure_time ≤ current_trip_departure_time
+
+                        # if we found something we can board, and we're not on a vehicle yet, or the new trip
+                        # is better than what we're currently on OR has a lower walk distance, board here. 
+                        if !isnothing(best_candidate) && (
+                            isnothing(current_trip) || # not yet boarded
+                            best_candidate_departure_time < current_trip_departure_time || # board an earlier vehicle
+                            # found the same trip (or one that leaves at the same time - this may be important if there
+                            # are duplicate trips), and we have a lower walk distance (transfer preference in the RAPTOR paper)
+                            (best_candidate_departure_time == current_trip_departure_time &&
+                                walk_distance_meters[target - 1, stop] < walk_distance_meters[target - 1, current_boardstop])
+                        )
+
+                            # hop on board
+                            current_tripidx = best_candidate
+                            current_trip = net.trips[best_candidate]
+                            current_boardstop = stop
+                            current_boardtime = best_candidate_departure_time
+                        end
+                    end
+                end
+
+                # possible optimization: if we rode the pattern today, don't check for tomorrow
+                # might need to add some checks to make sure that services are non-overlapping
+                # i.e. there isn't a service from today that starts at 24:30 after the 00:10 service
+                # tomorrow starts. Checking that the hours are always >= 0 and every trip has a first
+                # departure time < 24 would be mostly sufficient - overtaking trips notwithstanding
+                # but that would cut computation roughly in half, so we might be okay with overtaking trips
+                # not working across service days.
+            end # yesterday/today/tomorrow loop
+        end
+
+        @debug "round $current_round found $(length(touched_stops)) stops accessible by transit"
 
         # clear prev_touched_stops and reuse as next_touched_stops, avoid allocation
         empty!(prev_touched_stops)
         next_touched_stops = prev_touched_stops
 
         # do transfers, but skip after last iteration
-        if round < max_rides
+        if current_round < max_rides
             # don't find transfers to stops that already have better transfers from previous rounds
             # this should not affect routing results, as those transfers would not be optimal in the next
             # round of transit routing, but better to stop it before it happens
-            times_at_stops[target, :] = min.(times_at_stops[target - 1, :], non_transfer_times_at_stops[target, :])
+            # ≤ means fewer transfer routes will win over more transfer routes.
+            # TODO this is not happening anymore. This used to copy forward transfers from previous rounds, now it just copies non-transfer times
+            # to transfer times (i.e. loop transfers)
+            # preserve_old = dominates.(times_at_stops[target, :], walk_distance_meters[target, :], non_transfer_times_at_stops[target, :], non_transfer_walk_distance_meters[target, :])
+            # times_at_stops[target, :] = ifelse.(preserve_old, times_at_stops[target, :], non_transfer_times_at_stops[target, :])
+            # walk_distance_meters[target, :] = ifelse.(preserve_old, walk_distance_meters[target, :], non_transfer_walk_distance_meters[target, :])
+            # transfer_prev_stop[target, :] = ifelse.(preserve_old, transfer_prev_stop[target, :], INT_MISSING)
 
             # leave other things missing if there were no transfers
             for stop in touched_stops
                 push!(next_touched_stops, stop)  # this stop was touched by this round
 
+                # handle the loop transfer
+                if non_transfer_times_at_stops[target, stop] < times_at_stops[target, stop]
+                    times_at_stops[target, stop] = non_transfer_times_at_stops[target, stop]
+                    walk_distance_meters[target, stop] = non_transfer_walk_distance_meters[target, stop]
+                    transfer_prev_stop[target, stop] = INT_MISSING
+                end
+
                 for xfer in net.transfers[stop]
                     if xfer.distance_meters <= max_transfer_distance_meters
-                        xfer_walk_time = Base.round(xfer.distance_meters / walk_speed_meters_per_second)
                         pre_xfer_time = non_transfer_times_at_stops[target, stop]
-                        time_after_xfer = pre_xfer_time + xfer_walk_time
+                        time_after_xfer = pre_xfer_time + round(Int32, xfer.duration_seconds)
+                        dist_after_xfer = non_transfer_walk_distance_meters[target, stop] + round(Int32, xfer.distance_meters)
                         if time_after_xfer < times_at_stops[target, xfer.target_stop]
                             # transferring to this stop is optimal!
                             times_at_stops[target, xfer.target_stop] = time_after_xfer
+                            walk_distance_meters[target, xfer.target_stop] = dist_after_xfer
                             transfer_prev_stop[target, xfer.target_stop] = stop
 
                             # note that we do _not_ update prev_boardtime, etc here because

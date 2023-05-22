@@ -13,7 +13,9 @@
 # 2->6: local -> express
 # 2->7: local -> express -> local
 
-@testset "Local and express" begin
+@testitem "Local and express" begin
+    include("../test-includes.jl")
+
     gtfs = MockGTFS()
     stops = [add_stop!(gtfs) for _ in 1:8]
     routes = [add_route!(gtfs) for _ in 1:2]
@@ -73,7 +75,7 @@
             build_network([path])
         end
 
-        @testset "From stop 1" begin
+        #@testitem "From stop 1" begin
             res = raptor(net, [StopAndTime(1, gt(7, 55))], Date(2023, 4, 7))
 
             # round 1: access
@@ -139,9 +141,9 @@
             @test res.transfer_prev_stop[3, :] == fill(IM, 8)
 
             test_no_updates_after_round(res, 3)
-        end
+        #end
 
-        @testset "From stop 2" begin
+        #@testitem "From stop 2" begin
             res = raptor(net, [StopAndTime(2, gt(8, 5))], Date(2023, 4, 7))
 
             # round 1: access
@@ -238,7 +240,7 @@
 
             test_no_updates_after_round(res, 4)
 
-        end
+        #end
     end
     
 end

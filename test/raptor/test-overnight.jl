@@ -12,7 +12,9 @@
 # However, a trip departing 2 at 00:15 on Tuesday should wait until midnight (A does not run until Tuesday night/Wednesday morning)
 # Similarly, a trip departing 3 at 00:15 on Thursday should fail to route
 
-@testset "Overnight routing" begin
+@testitem "Overnight routing" begin
+    include("../test-includes.jl")
+
     gtfs = MockGTFS()
 
     stops = [add_stop!(gtfs) for _ in 1:4]
@@ -37,7 +39,7 @@
             build_network([path])
         end
 
-        @testset "Tuesday night" begin
+        #@testitem "Tuesday night" begin
             res = raptor(net, [StopAndTime(1, gt(23, 50))], Date(2023, 5, 2))
 
             # round 1: access
@@ -66,9 +68,9 @@
             @test res.transfer_prev_stop[3, :] == fill(IM, 4)
 
             test_no_updates_after_round(res, 3)
-        end
+        #end
 
-        @testset "Wednesday morning" begin
+        #@testitem "Wednesday morning" begin
             # start right at midnight, to ensure that doesn't cause any issues
             res = raptor(net, [StopAndTime(2, gt(0, 0))], Date(2023, 5, 3))
 
@@ -97,9 +99,9 @@
             @test res.transfer_prev_stop[3, :] == fill(IM, 4)
 
             test_no_updates_after_round(res, 3)
-        end
+        #end
 
-        @testset "Tuesday morning" begin
+        #@testitem "Tuesday morning" begin
             # on tuesday morning, routing should succeed, but only by waiting until Tuesday night
             res = raptor(net, [StopAndTime(2, gt(0, 15))], Date(2023, 5, 2))
 
@@ -128,9 +130,9 @@
             @test res.transfer_prev_stop[3, :] == fill(IM, 4)
 
             test_no_updates_after_round(res, 3)
-        end
+        #end
 
-        @testset "Thursday morning" begin
+        #@testitem "Thursday morning" begin
             # On thursday morning, routing should fail - previous service day service doesn't run late enough
             res = raptor(net, [StopAndTime(3, gt(0, 15))], Date(2023, 5, 4))
 
@@ -144,6 +146,6 @@
 
             # no transit riding occurred
             test_no_updates_after_round(res, 1)
-        end
+        #end
     end
 end

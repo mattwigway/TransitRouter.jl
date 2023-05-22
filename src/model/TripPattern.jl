@@ -3,4 +3,6 @@
 struct TripPattern
     stops::Vector{Int64}
     service::Int64
+    pickup_types::Vector{PickupDropoffType.T}
+    drop_off_types::Vector{PickupDropoffType.T}
 end

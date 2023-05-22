@@ -198,7 +198,9 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
                 strow.stop_sequence,
                 parse_gtfstime(strow.arrival_time),
                 parse_gtfstime(strow.departure_time),
-                shape_dist_traveled
+                shape_dist_traveled,
+                "pickup_type" ∈ names(strow) ? PickupDropoffType.parse(strow.pickup_type) : PickupDropoffType.Scheduled,
+                "drop_off_type" ∈ names(strow) ? PickupDropoffType.parse(strow.drop_off_type) : PickupDropoffType.Scheduled,
             )
             push!(trp.stop_times, st)
         end
