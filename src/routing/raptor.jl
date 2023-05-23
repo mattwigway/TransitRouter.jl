@@ -116,9 +116,9 @@ function raptor(
 
     # get which service idxes are running (for yesterday today and tomorrow to account for overnight routing)
     services_running = (
-        yesterday = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date - Day(1)), collect(enumerate(net.services))))),
-        today=BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date), collect(enumerate(net.services))))),
-        tomorrow = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date + Day(1)), collect(enumerate(net.services)))))
+        yesterday = is_service_running.(net.services, date - Day(1)),
+        today = is_service_running.(net.services, date),
+        tomorrow = is_service_running.(net.services, date + Day(1))
     )
 
     @debug "$(length(services_running)) services running on requested date"
@@ -228,7 +228,7 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
                     # explore patterns thrice, once for yesterday, today and tomorrow
                     tp = net.patterns[patidx]
 
-                    if tp.service ∈ services_running_this_day
+                    if services_running_this_day[tp.service]
                         explore_pattern!(net, result, target, tp, patidx, stop_time_offset, touched_stops, prev_touched_stops)
                     end
                 end
@@ -350,7 +350,7 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
                 (isnothing(current_trip) || result.times_at_stops_each_round[target - 1, stop] ≤ current_trip_departure_time::Int32 - BOARD_SLACK_SECONDS) &&
                 tp.pickup_types[stopidx] != PickupDropoffType.NotAvailable
             candidate_arrival_time = result.times_at_stops_each_round[target - 1, stop]
-            #@assert candidate_arrival_time < MAX_TIME
+            @assert candidate_arrival_time < MAX_TIME
             earliest_board_time = candidate_arrival_time + BOARD_SLACK_SECONDS
             best_candidate = -1
             best_candidate_departure_time = zero(Int32)
@@ -365,7 +365,7 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
 
             # if we touched this stop and it had a time at the stop early enough to run this loop,
             # we should at least be able to board this trip
-            #@assert isnothing(current_trip) || best_candidate_departure_time::Int32 ≤ current_trip_departure_time::Int32
+            @assert isnothing(current_trip) || best_candidate_departure_time::Int32 ≤ current_trip_departure_time::Int32
 
             # if we found something we can board, and we're not on a vehicle yet, or the new trip
             # is better than what we're currently on OR has a lower walk distance, board here. 
