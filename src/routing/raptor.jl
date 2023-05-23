@@ -316,21 +316,21 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
     # find the trip that departs at or after the earliest possible departure
     # use times_at_stops; allow transfers
     current_tripidx = -1
-    current_trip = nothing
     current_boardstop = -1
     current_boardtime = typemin(Int32)
     
     for (stopidx, stop) in enumerate(tp.stops)
         # get the current arrival and departure times at this stop
-        current_trip_arrival_time, current_trip_departure_time = if !isnothing(current_trip)
-            current_trip.stop_times[stopidx].arrival_time + stop_time_offset, current_trip.stop_times[stopidx].departure_time + stop_time_offset
+        current_trip_arrival_time, current_trip_departure_time = if current_tripidx ≠ -1
+            trip = net.trips[current_tripidx]
+            trip.stop_times[stopidx].arrival_time + stop_time_offset, trip.stop_times[stopidx].departure_time + stop_time_offset
         else
             typemin(Int32), typemin(Int32)
         end
 
         # see if it makes sense to alight
         # do this before boarding, because you might have a situation where one path rides A->B and another rides B->C
-        if !isnothing(current_trip) && tp.drop_off_types[stopidx] != PickupDropoffType.NotAvailable
+        if current_tripidx ≠ -1 && tp.drop_off_types[stopidx] != PickupDropoffType.NotAvailable
             # see if it's (strictly) better - strict so more-transfer trips don't replace fewer-transfer trips
             if current_trip_arrival_time::Int32 + stop_time_offset < result.non_transfer_times_at_stops_each_round[target, stop]
                 result.non_transfer_times_at_stops_each_round[target, stop] = current_trip_arrival_time::Int32
@@ -347,7 +347,7 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
         # if we're at a stop reached in the previous round, and we haven't boarded this pattern yet, see if we can board
         # if we're on board, try to board an earlier trip if the best time to the stop is before the current trip departure time
         if prev_touched_stops[stop] &&
-                (isnothing(current_trip) || result.times_at_stops_each_round[target - 1, stop] ≤ current_trip_departure_time::Int32 - BOARD_SLACK_SECONDS) &&
+                (current_tripidx == -1 || result.times_at_stops_each_round[target - 1, stop] ≤ current_trip_departure_time::Int32 - BOARD_SLACK_SECONDS) &&
                 tp.pickup_types[stopidx] != PickupDropoffType.NotAvailable
             candidate_arrival_time = result.times_at_stops_each_round[target - 1, stop]
             @assert candidate_arrival_time < MAX_TIME
@@ -357,7 +357,7 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
             for tripidx in net.trips_for_pattern[patidx]
                 candidate_trip = net.trips[tripidx]
                 candidate_departure_time = candidate_trip.stop_times[stopidx].departure_time + stop_time_offset
-                if earliest_board_time ≤ candidate_departure_time::Int32 && (isnothing(best_candidate) || candidate_departure_time::Int32 < best_candidate_departure_time::Int32)
+                if earliest_board_time ≤ candidate_departure_time::Int32 && (best_candidate == -1 || candidate_departure_time::Int32 < best_candidate_departure_time::Int32)
                     best_candidate = tripidx
                     best_candidate_departure_time = candidate_departure_time
                 end
@@ -365,12 +365,12 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
 
             # if we touched this stop and it had a time at the stop early enough to run this loop,
             # we should at least be able to board this trip
-            @assert isnothing(current_trip) || best_candidate_departure_time::Int32 ≤ current_trip_departure_time::Int32
+            @assert current_tripidx == -1 || best_candidate_departure_time::Int32 ≤ current_trip_departure_time::Int32
 
             # if we found something we can board, and we're not on a vehicle yet, or the new trip
             # is better than what we're currently on OR has a lower walk distance, board here. 
             if best_candidate > 0 && (
-                isnothing(current_trip) || # not yet boarded
+                current_tripidx == -1 || # not yet boarded
                 best_candidate_departure_time::Int32 < current_trip_departure_time::Int32 || # board an earlier vehicle
                 # found the same trip (or one that leaves at the same time - this may be important if there
                 # are duplicate trips), and we have a lower walk distance (transfer preference in the RAPTOR paper)
@@ -380,7 +380,6 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
 
                 # hop on board
                 current_tripidx = best_candidate
-                current_trip = net.trips[best_candidate]
                 current_boardstop = stop
                 current_boardtime = best_candidate_departure_time
             end
