@@ -2,10 +2,10 @@
 # Described in Delling, D., Pajor, T., & Werneck, R. (2012). Round-Based Public Transit Routing. http://research.microsoft.com/pubs/156567/raptor_alenex.pdf
 
 const MAX_TIME = typemax(Int32)
-const INT_MISSING = -2
+const INT_MISSING = convert(Int32, -2)
 const BOARD_SLACK_SECONDS = convert(Int32, 60)
 const EMPTY_SET = BitSet()
-const OFFSETS = (yesterday=-SECONDS_PER_DAY, today=0, tomorrow=SECONDS_PER_DAY)
+const OFFSETS = (yesterday=convert(Int32, -SECONDS_PER_DAY), today=zero(Int32), tomorrow=convert(Int32, SECONDS_PER_DAY))
 
 struct StopAndTime
     stop::Int64
@@ -232,12 +232,11 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
 
         # find all patterns that touch this stop
         # optimization: mark patterns, then loop over patterns instead of stops
-        for day in (
-            :yesterday, # all my problems seemed so far away 
-            :today, # while the blossoms still cling to the vine
-            :tomorrow # tomorrow, I love you, tomorrow, you're always a day away
+        for (services_running_this_day, stop_time_offset) in (
+            (services_running[:yesterday], OFFSETS[:yesterday]), # all my problems seemed so far away 
+            (services_running[:today], OFFSETS[:today]), # while the blossoms still cling to the vine
+            (services_running[:tomorrow], OFFSETS[:tomorrow]) # tomorrow, I love you, tomorrow, you're always a day away
         )
-            services_running_this_day = services_running[day]    
 
             for patidx in touched_patterns
                 # explore patterns thrice, once for yesterday, today and tomorrow
@@ -246,8 +245,6 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
                 if tp.service ∉ services_running_this_day
                     continue
                 end
-
-                stop_time_offset = OFFSETS[day]
 
                 # possible optimization: skip trip patterns that don't run after departure time
                 # (most patterns from yesterday will get skipped)
