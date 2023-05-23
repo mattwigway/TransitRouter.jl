@@ -4,7 +4,6 @@
 const MAX_TIME = typemax(Int32)
 const INT_MISSING = -2
 const BOARD_SLACK_SECONDS = convert(Int32, 60)
-const EMPTY_SET = BitSet()
 const OFFSETS = (yesterday=convert(Int32, -SECONDS_PER_DAY), today=zero(Int32), tomorrow=convert(Int32, SECONDS_PER_DAY))
 
 struct StopAndTime
@@ -82,12 +81,6 @@ struct RaptorResult
     date::Date
 end
 
-function empty_no_resize!(s::BitSet)
-    for set_bit in s
-        delete!(s, set_bit)
-    end
-end
-
 # old API
 #@deprecate
 raptor(net, origins::Vector{StopAndTime}, date::Date; kwargs...) = raptor(origins, net, date; kwargs...)
@@ -117,19 +110,9 @@ function raptor(
     prev_trip::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_boardtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
     # set bit 0 so that offset is forced to zero and there aren't allocations later
-    prev_touched_stops::BitSet = BitSet([0])
-    touched_stops::BitSet = BitSet([0])
-    touched_patterns = BitSet()
-    sizehint!(prev_touched_stops, nstops)
-    sizehint!(touched_stops, nstops)
-    sizehint!(touched_patterns, length(net.patterns))
-
-    # unset the 0 set bits that were to force offset
-    delete!(prev_touched_stops, 0)
-    delete!(touched_stops, 0)
-
-    @assert prev_touched_stops.offset == 0
-    @assert touched_stops.offset == 0
+    prev_touched_stops = falses(nstops)::BitVector
+    touched_stops = falses(nstops)::BitVector
+    touched_patterns = falses(length(net.patterns))::BitVector
 
     # get which service idxes are running (for yesterday today and tomorrow to account for overnight routing)
     services_running = (
@@ -164,14 +147,14 @@ function raptor(
                 times_at_stops[1, sat.stop] = sat.time
                 walk_distance_meters[1, sat.stop] = sat.walk_distance_meters
                 transfer_stop[1, sat.stop] = INT_MISSING
-                push!(prev_touched_stops, sat.stop)
+                prev_touched_stops[sat.stop] = true
             end
         end
 
         run_raptor!(net, result, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops, touched_patterns)
 
-        empty_no_resize!(prev_touched_stops)
-        empty_no_resize!(touched_stops)
+        fill!(prev_touched_stops, false)
+        fill!(touched_stops, false)
 
         nextstops = origins(result, val)
         if isnothing(nextstops)
@@ -185,7 +168,7 @@ function raptor(
 end
 
 function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, max_rides, services_running,
-        prev_touched_stops::BitSet, touched_stops::BitSet, touched_patterns::BitSet)
+        prev_touched_stops, touched_stops, touched_patterns)
 
     # convenience
     times_at_stops = result.times_at_stops_each_round
@@ -223,10 +206,12 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
         end
 
         # find all patterns that were touched
-        empty_no_resize!(touched_patterns)
-        for stop in prev_touched_stops
-            for pat in net.patterns_for_stop[stop]
-                push!(touched_patterns, pat)
+        fill!(touched_patterns, false)
+        for stop in eachindex(prev_touched_stops)
+            if prev_touched_stops[stop]
+                for pat in net.patterns_for_stop[stop]
+                    touched_patterns[pat] = true
+                end
             end
         end
 
@@ -238,12 +223,14 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
             (services_running[:tomorrow], OFFSETS[:tomorrow]) # tomorrow, I love you, tomorrow, you're always a day away
         )
 
-            for patidx in touched_patterns
-                # explore patterns thrice, once for yesterday, today and tomorrow
-                tp = net.patterns[patidx]
+            for patidx in eachindex(touched_patterns)
+                if touched_patterns[patidx]
+                    # explore patterns thrice, once for yesterday, today and tomorrow
+                    tp = net.patterns[patidx]
 
-                if tp.service ∈ services_running_this_day
-                    @time explore_pattern!(net, result, target, tp, patidx, stop_time_offset, touched_stops, prev_touched_stops)
+                    if tp.service ∈ services_running_this_day
+                        explore_pattern!(net, result, target, tp, patidx, stop_time_offset, touched_stops, prev_touched_stops)
+                    end
                 end
 
                 
@@ -260,7 +247,7 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
         @debug "round $current_round found $(length(touched_stops)) stops accessible by transit"
 
         # clear prev_touched_stops and reuse as next_touched_stops, avoid allocation
-        empty!(prev_touched_stops)
+        fill!(prev_touched_stops, false)
         next_touched_stops = prev_touched_stops
 
         # do transfers, but skip after last iteration
@@ -277,8 +264,12 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
             # transfer_prev_stop[target, :] = ifelse.(preserve_old, transfer_prev_stop[target, :], INT_MISSING)
 
             # leave other things missing if there were no transfers
-            for stop in touched_stops
-                push!(next_touched_stops, stop)  # this stop was touched by this round
+            for stop in eachindex(touched_stops)
+                if !touched_stops[stop]
+                    continue
+                end
+
+                next_touched_stops[stop] = true  # this stop was touched by this round
 
                 # handle the loop transfer
                 if non_transfer_times_at_stops[target, stop] < times_at_stops[target, stop]
@@ -304,7 +295,7 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
                             # both via transit and quicker via a transfer, and a second transfer built
                             # on the transit route, and another ride built on the transfer - there would
                             # be no way to trace the trip back for the ride that arrived via transit.
-                            push!(next_touched_stops, xfer.target_stop)
+                            next_touched_stops[xfer.target_stop] = true
                         end
                     end
                 end
@@ -313,7 +304,7 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
 
         # prepare for next iteration
         prev_touched_stops = next_touched_stops
-        empty!(touched_stops)
+        fill!(touched_stops, false)
     end
 end
 
@@ -324,17 +315,17 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
 
     # find the trip that departs at or after the earliest possible departure
     # use times_at_stops; allow transfers
-    current_tripidx = nothing
+    current_tripidx = -1
     current_trip = nothing
-    current_boardstop = nothing
-    current_boardtime = nothing
+    current_boardstop = -1
+    current_boardtime = typemin(Int32)
     
     for (stopidx, stop) in enumerate(tp.stops)
         # get the current arrival and departure times at this stop
         current_trip_arrival_time, current_trip_departure_time = if !isnothing(current_trip)
             current_trip.stop_times[stopidx].arrival_time + stop_time_offset, current_trip.stop_times[stopidx].departure_time + stop_time_offset
         else
-            nothing, nothing
+            typemin(Int32), typemin(Int32)
         end
 
         # see if it makes sense to alight
@@ -347,7 +338,7 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
                 result.prev_trip[target, stop] = current_tripidx::Int64
                 result.prev_boardtime[target, stop] = current_boardtime::Int32
                 result.non_transfer_walk_distance_meters[target, stop] = result.walk_distance_meters[target - 1, current_boardstop]
-                push!(touched_stops, stop)
+                touched_stops[stop] = true
             end
         end
 
@@ -355,14 +346,14 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
         # see if we can board
         # if we're at a stop reached in the previous round, and we haven't boarded this pattern yet, see if we can board
         # if we're on board, try to board an earlier trip if the best time to the stop is before the current trip departure time
-        if stop ∈ prev_touched_stops &&
+        if prev_touched_stops[stop] &&
                 (isnothing(current_trip) || result.times_at_stops_each_round[target - 1, stop] ≤ current_trip_departure_time::Int32 - BOARD_SLACK_SECONDS) &&
                 tp.pickup_types[stopidx] != PickupDropoffType.NotAvailable
             candidate_arrival_time = result.times_at_stops_each_round[target - 1, stop]
             #@assert candidate_arrival_time < MAX_TIME
             earliest_board_time = candidate_arrival_time + BOARD_SLACK_SECONDS
-            best_candidate = nothing
-            best_candidate_departure_time = nothing
+            best_candidate = -1
+            best_candidate_departure_time = zero(Int32)
             for tripidx in net.trips_for_pattern[patidx]
                 candidate_trip = net.trips[tripidx]
                 candidate_departure_time = candidate_trip.stop_times[stopidx].departure_time + stop_time_offset
@@ -378,7 +369,7 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
 
             # if we found something we can board, and we're not on a vehicle yet, or the new trip
             # is better than what we're currently on OR has a lower walk distance, board here. 
-            if !isnothing(best_candidate) && (
+            if best_candidate > 0 && (
                 isnothing(current_trip) || # not yet boarded
                 best_candidate_departure_time::Int32 < current_trip_departure_time::Int32 || # board an earlier vehicle
                 # found the same trip (or one that leaves at the same time - this may be important if there
