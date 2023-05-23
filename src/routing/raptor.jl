@@ -2,7 +2,7 @@
 # Described in Delling, D., Pajor, T., & Werneck, R. (2012). Round-Based Public Transit Routing. http://research.microsoft.com/pubs/156567/raptor_alenex.pdf
 
 const MAX_TIME = typemax(Int32)
-const INT_MISSING = convert(Int32, -2)
+const INT_MISSING = -2
 const BOARD_SLACK_SECONDS = convert(Int32, 60)
 const EMPTY_SET = BitSet()
 const OFFSETS = (yesterday=convert(Int32, -SECONDS_PER_DAY), today=zero(Int32), tomorrow=convert(Int32, SECONDS_PER_DAY))
@@ -119,8 +119,10 @@ function raptor(
     # set bit 0 so that offset is forced to zero and there aren't allocations later
     prev_touched_stops::BitSet = BitSet([0])
     touched_stops::BitSet = BitSet([0])
+    touched_patterns = BitSet()
     sizehint!(prev_touched_stops, nstops)
     sizehint!(touched_stops, nstops)
+    sizehint!(touched_patterns, length(net.patterns))
 
     # unset the 0 set bits that were to force offset
     delete!(prev_touched_stops, 0)
@@ -166,7 +168,7 @@ function raptor(
             end
         end
 
-        run_raptor!(net, result, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops)
+        run_raptor!(net, result, max_transfer_distance_meters, max_rides, services_running, prev_touched_stops, touched_stops, touched_patterns)
 
         empty_no_resize!(prev_touched_stops)
         empty_no_resize!(touched_stops)
@@ -183,7 +185,7 @@ function raptor(
 end
 
 function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, max_rides, services_running,
-        prev_touched_stops::BitSet, touched_stops::BitSet)
+        prev_touched_stops::BitSet, touched_stops::BitSet, touched_patterns::BitSet)
 
     # convenience
     times_at_stops = result.times_at_stops_each_round
@@ -194,8 +196,6 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
     transfer_prev_stop = result.transfer_prev_stop
     prev_trip = result.prev_trip
     prev_boardtime = result.prev_boardtime
-
-    touched_patterns = BitSet()
 
     for current_round in 1:max_rides
         # where the results of this round will be recorded
@@ -242,87 +242,11 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
                 # explore patterns thrice, once for yesterday, today and tomorrow
                 tp = net.patterns[patidx]
 
-                if tp.service ∉ services_running_this_day
-                    continue
+                if tp.service ∈ services_running_this_day
+                    @time explore_pattern!(net, result, target, tp, patidx, stop_time_offset, touched_stops, prev_touched_stops)
                 end
 
-                # possible optimization: skip trip patterns that don't run after departure time
-                # (most patterns from yesterday will get skipped)
-
-                # find the trip that departs at or after the earliest possible departure
-                # use times_at_stops; allow transfers
-                current_tripidx = nothing
-                current_trip = nothing
-                current_boardstop = nothing
-                current_boardtime = nothing
                 
-                for (stopidx, stop) in enumerate(tp.stops)
-                    # get the current arrival and departure times at this stop
-                    current_trip_arrival_time, current_trip_departure_time = if !isnothing(current_trip)
-                        current_trip.stop_times[stopidx].arrival_time + stop_time_offset, current_trip.stop_times[stopidx].departure_time + stop_time_offset
-                    else
-                        nothing, nothing
-                    end
-
-                    # see if it makes sense to alight
-                    # do this before boarding, because you might have a situation where one path rides A->B and another rides B->C
-                    if !isnothing(current_trip) && tp.drop_off_types[stopidx] != PickupDropoffType.NotAvailable
-                        # see if it's (strictly) better - strict so more-transfer trips don't replace fewer-transfer trips
-                        if current_trip_arrival_time + stop_time_offset < non_transfer_times_at_stops[target, stop]
-                            non_transfer_times_at_stops[target, stop] = current_trip_arrival_time
-                            prev_stop[target, stop] = current_boardstop
-                            prev_trip[target, stop] = current_tripidx
-                            prev_boardtime[target, stop] = current_boardtime
-                            non_transfer_walk_distance_meters[target, stop] = walk_distance_meters[target - 1, current_boardstop]
-                            push!(touched_stops, stop)
-                        end
-                    end
-
-
-                    # see if we can board
-                    # if we're at a stop reached in the previous round, and we haven't boarded this pattern yet, see if we can board
-                    # if we're on board, try to board an earlier trip if the best time to the stop is before the current trip departure time
-                    if stop ∈ prev_touched_stops &&
-                            (isnothing(current_trip) || times_at_stops[target - 1, stop] ≤ current_trip_departure_time - BOARD_SLACK_SECONDS) &&
-                            tp.pickup_types[stopidx] != PickupDropoffType.NotAvailable
-                        candidate_arrival_time = times_at_stops[target - 1, stop]
-                        @assert candidate_arrival_time < MAX_TIME
-                        earliest_board_time = candidate_arrival_time + BOARD_SLACK_SECONDS
-                        best_candidate = nothing
-                        best_candidate_departure_time = nothing
-                        for tripidx in net.trips_for_pattern[patidx]
-                            candidate_trip = net.trips[tripidx]
-                            candidate_departure_time = candidate_trip.stop_times[stopidx].departure_time + stop_time_offset
-                            if earliest_board_time ≤ candidate_departure_time && (isnothing(best_candidate) || candidate_departure_time < best_candidate_departure_time)
-                                best_candidate = tripidx
-                                best_candidate_departure_time = candidate_departure_time
-                            end
-                        end
-
-                        # if we touched this stop and it had a time at the stop early enough to run this loop,
-                        # we should at least be able to board this trip
-                        @assert isnothing(current_trip) || best_candidate_departure_time ≤ current_trip_departure_time
-
-                        # if we found something we can board, and we're not on a vehicle yet, or the new trip
-                        # is better than what we're currently on OR has a lower walk distance, board here. 
-                        if !isnothing(best_candidate) && (
-                            isnothing(current_trip) || # not yet boarded
-                            best_candidate_departure_time < current_trip_departure_time || # board an earlier vehicle
-                            # found the same trip (or one that leaves at the same time - this may be important if there
-                            # are duplicate trips), and we have a lower walk distance (transfer preference in the RAPTOR paper)
-                            (best_candidate_departure_time == current_trip_departure_time &&
-                                walk_distance_meters[target - 1, stop] < walk_distance_meters[target - 1, current_boardstop])
-                        )
-
-                            # hop on board
-                            current_tripidx = best_candidate
-                            current_trip = net.trips[best_candidate]
-                            current_boardstop = stop
-                            current_boardtime = best_candidate_departure_time
-                        end
-                    end
-                end
-
                 # possible optimization: if we rode the pattern today, don't check for tomorrow
                 # might need to add some checks to make sure that services are non-overlapping
                 # i.e. there isn't a service from today that starts at 24:30 after the 00:10 service
@@ -393,3 +317,82 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
     end
 end
 
+# explore a pattern to see if we can use it in this round
+function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, touched_stops, prev_touched_stops)
+# possible optimization: skip trip patterns that don't run after departure time
+    # (most patterns from yesterday will get skipped)
+
+    # find the trip that departs at or after the earliest possible departure
+    # use times_at_stops; allow transfers
+    current_tripidx = nothing
+    current_trip = nothing
+    current_boardstop = nothing
+    current_boardtime = nothing
+    
+    for (stopidx, stop) in enumerate(tp.stops)
+        # get the current arrival and departure times at this stop
+        current_trip_arrival_time, current_trip_departure_time = if !isnothing(current_trip)
+            current_trip.stop_times[stopidx].arrival_time + stop_time_offset, current_trip.stop_times[stopidx].departure_time + stop_time_offset
+        else
+            nothing, nothing
+        end
+
+        # see if it makes sense to alight
+        # do this before boarding, because you might have a situation where one path rides A->B and another rides B->C
+        if !isnothing(current_trip) && tp.drop_off_types[stopidx] != PickupDropoffType.NotAvailable
+            # see if it's (strictly) better - strict so more-transfer trips don't replace fewer-transfer trips
+            if current_trip_arrival_time::Int32 + stop_time_offset < result.non_transfer_times_at_stops_each_round[target, stop]
+                result.non_transfer_times_at_stops_each_round[target, stop] = current_trip_arrival_time::Int32
+                result.prev_stop[target, stop] = current_boardstop::Int64
+                result.prev_trip[target, stop] = current_tripidx::Int64
+                result.prev_boardtime[target, stop] = current_boardtime::Int32
+                result.non_transfer_walk_distance_meters[target, stop] = result.walk_distance_meters[target - 1, current_boardstop]
+                push!(touched_stops, stop)
+            end
+        end
+
+
+        # see if we can board
+        # if we're at a stop reached in the previous round, and we haven't boarded this pattern yet, see if we can board
+        # if we're on board, try to board an earlier trip if the best time to the stop is before the current trip departure time
+        if stop ∈ prev_touched_stops &&
+                (isnothing(current_trip) || result.times_at_stops_each_round[target - 1, stop] ≤ current_trip_departure_time::Int32 - BOARD_SLACK_SECONDS) &&
+                tp.pickup_types[stopidx] != PickupDropoffType.NotAvailable
+            candidate_arrival_time = result.times_at_stops_each_round[target - 1, stop]
+            #@assert candidate_arrival_time < MAX_TIME
+            earliest_board_time = candidate_arrival_time + BOARD_SLACK_SECONDS
+            best_candidate = nothing
+            best_candidate_departure_time = nothing
+            for tripidx in net.trips_for_pattern[patidx]
+                candidate_trip = net.trips[tripidx]
+                candidate_departure_time = candidate_trip.stop_times[stopidx].departure_time + stop_time_offset
+                if earliest_board_time ≤ candidate_departure_time::Int32 && (isnothing(best_candidate) || candidate_departure_time::Int32 < best_candidate_departure_time::Int32)
+                    best_candidate = tripidx
+                    best_candidate_departure_time = candidate_departure_time
+                end
+            end
+
+            # if we touched this stop and it had a time at the stop early enough to run this loop,
+            # we should at least be able to board this trip
+            #@assert isnothing(current_trip) || best_candidate_departure_time::Int32 ≤ current_trip_departure_time::Int32
+
+            # if we found something we can board, and we're not on a vehicle yet, or the new trip
+            # is better than what we're currently on OR has a lower walk distance, board here. 
+            if !isnothing(best_candidate) && (
+                isnothing(current_trip) || # not yet boarded
+                best_candidate_departure_time::Int32 < current_trip_departure_time::Int32 || # board an earlier vehicle
+                # found the same trip (or one that leaves at the same time - this may be important if there
+                # are duplicate trips), and we have a lower walk distance (transfer preference in the RAPTOR paper)
+                (best_candidate_departure_time::Int32 == current_trip_departure_time::Int32 &&
+                    result.walk_distance_meters[target - 1, stop] < result.walk_distance_meters[target - 1, current_boardstop])
+            )
+
+                # hop on board
+                current_tripidx = best_candidate
+                current_trip = net.trips[best_candidate]
+                current_boardstop = stop
+                current_boardtime = best_candidate_departure_time
+            end
+        end
+    end
+end
