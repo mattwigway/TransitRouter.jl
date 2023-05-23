@@ -136,7 +136,6 @@ function raptor(
         tomorrow = BitSet(map(t -> t[1], filter(t -> is_service_running(t[2], date + Day(1)), collect(enumerate(net.services)))))
     )
 
-
     @debug "$(length(services_running)) services running on requested date"
 
     # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
@@ -233,17 +232,18 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
 
         # find all patterns that touch this stop
         # optimization: mark patterns, then loop over patterns instead of stops
-        for patidx in touched_patterns
+        for day in (
+            :yesterday, # all my problems seemed so far away 
+            :today, # while the blossoms still cling to the vine
+            :tomorrow # tomorrow, I love you, tomorrow, you're always a day away
+        )
+            services_running_this_day = services_running[day]    
 
-            # explore patterns thrice, once for yesterday, today and tomorrow
-            tp = net.patterns[patidx]
+            for patidx in touched_patterns
+                # explore patterns thrice, once for yesterday, today and tomorrow
+                tp = net.patterns[patidx]
 
-            for day in (
-                    :yesterday, # all my problems seemed so far away 
-                    :today, # while the blossoms still cling to the vine
-                    :tomorrow # tomorrow, I love you, tomorrow, you're always a day away
-                )
-                if tp.service ∉ services_running[day]
+                if tp.service ∉ services_running_this_day
                     continue
                 end
 
