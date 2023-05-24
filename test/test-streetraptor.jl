@@ -45,12 +45,12 @@
             # Origin is UCSB, destination is downtown and eastside
             res = street_raptor(net, osrm, osrm, LatLon(34.4128, -119.8487), [LatLon(34.4224, -119.7032), LatLon(34.4226, -119.6777)], DateTime(2023, 5, 10, 8, 0), 3600)
 
-            @snapshot_test "streetrouter_result" res
+            @snapshot_test "streetrouter_result" trace_all_optimal_paths.(Ref(net), Ref(res), 1:2)
 
             # now, something different - none of the routes presented above use a transfer.
             # now, origin is the transit center, destination is off Winchester Cyn Blvd in Goleta
             xferres = street_raptor(net, osrm, osrm, LatLon(34.4224, -119.7032), [LatLon(34.4360, -119.8973)], DateTime(2023, 5, 10, 8, 0))
-            @snapshot_test "streetrouter_xfer_result" xferres
+            @snapshot_test "streetrouter_xfer_result" [trace_all_optimal_paths(net, xferres, 1)]
 
             # We also test reverse routing here. We do the same trip as the first two above, but make sure that we find a route that arrives
             # at the destination before the requested departure time.
