@@ -119,9 +119,8 @@
 
                 res = street_raptor(net, osrm, osrm, LatLon(34.4123, -119.8664), [LatLon(34.466354, -119.801296)], DateTime(2023, 5, 22, 7, 55), 4500)
 
-                paths = trace_all_optimal_paths(net, res, 1)
+                paths = res[1]
 
-                println(join(Base.show.(Iterators.flatten(paths)), "\n"))
                 @test length(paths) == 4
 
                 # First path should be the one-transfer walk to frequent route
