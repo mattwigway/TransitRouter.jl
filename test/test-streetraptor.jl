@@ -4,17 +4,7 @@
     @struct_isequal TransitRouter.Transfer
     @struct_isequal TransitRouter.RaptorResult
     @struct_isequal TransitRouter.AccessEgress
-
-    function Base.isequal(x::TransitRouter.Leg, y::TransitRouter.Leg)
-        isequal(x.start_time, y.start_time) &&
-            isequal(x.end_time, y.end_time) &&
-            isequal(x.origin_stop, y.origin_stop) &&
-            isequal(x.destination_stop, y.destination_stop) &&
-            isequal(x.type, y.type) &&
-            isequal(x.route, y.route) &&
-            (ismissing(x.distance_meters) && ismissing(y.distance_meters) || abs(x.distance_meters - y.distance_meters) < 5) 
-            isequal(x.geometry, y.geometry)
-    end
+    @struct_isequal TransitRouter.Leg
 
     # tests for streetraptor
     # don't run if OSRM binaries not available (currently not available on CI)
