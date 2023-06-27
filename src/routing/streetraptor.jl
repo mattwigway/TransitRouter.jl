@@ -12,8 +12,53 @@ end
 
 
 """
-If time_window_length_seconds is negative, will perform a range raptor search _ending_ at the requested departure time, and starting up to time_window_length_seconds
-earlier, or at the first time path to all destinations is possible (whichever is later).
+    street_raptor(
+        net::TransitNetwork,
+        access_router::OSRMInstance,
+        egress_router::OSRMInstance,
+        origin::LatLon{<:Real},
+        destinations::AbstractVector{<:LatLon{<:Real}},
+        departure_date_time::DateTime,
+        time_window_length_seconds::Union{Function, Int64}=0;
+        reverse_search=false,
+        max_reverse_search_duration=SECONDS_PER_DAY,
+        max_access_distance_meters=1000.0,
+        max_egress_distance_meters=1000.0,
+        max_rides=4,
+        stop_to_destination_distances=nothing,
+        stop_to_destination_durations=nothing
+    )
+
+Perform street and transit routing, departing at or arriving by all of the times in the time window, and return
+an array of optimal paths to each destination.
+
+Returns a vector of vectors of paths - one vector of all optimal paths per destination.
+
+"Optimal" means all paths that provide the latest departure given earliest arrival and minimum transfers.
+This is subject to an edge effect at the end of the time window. If the latest departure given earliest
+arrival for a given arrival time is after the end of the time window (i.e. the trip departing at the end
+of the time window involves waiting some amount of time before boarding), it _is_ guaranteed that the returned
+path will provide the minimum transfers given earliest arrival. It is _not_, however, guaranteed that the returned
+path will provide the latest departure time. The "latest departure" guarantee depends on the range-RAPTOR algorithm
+performing a search after the departure time of the second-latest departure. For more information, see
+https://projects.indicatrix.org/range-raptor-transfer-compression/. For this reason, with forward searches it is recommended
+to extend the time window somewhat past the last desired departure time, to provide a "burn-in" period and avoid
+edge effects. A trivial post-processing step removes these paths.
+
+When `reverse_search` is true, finds trips that arrive before each minute of the time window. In this case, no burn-in
+period is necessary. The reverse search works by first finding a trip that _departs at_ the latest desired arrival time, and
+then steps backwards with range-RAPTOR. Therefore, the latest departure will always be found.
+
+There is no explicit maximum duration for forward searches; if a trip is possible using transit vehicles running on yesterday's,
+today's, or tomorrow's schedule, they will be found. For a reverse search, a maximum duration is specified to keep the algorithm
+from continuing to iterate backwards forever, in hopes there may be a trip a possible at some point in the past.
+
+Note that when there are multiple destinations, the results will include all optimal paths to any destination that depart at the same
+time or later than the latest departure time for any destination that arrives at or before the start of the time window. So if there
+are two destinations, one nearby and one far away, there may be multiple trips to the nearby destination that arrive before the start
+of the time window. For instance, if the time window is 8:00-10:00, and to get the further destination by 8 requires leaving at 6:30, we
+will also find all optimal trips to the nearer destination that leave at or after 6:30. This may mean, for example, that we find both 6:40-6:55
+and a 7:40-7:55 trip. A simple postprocessing step can remove these trips if desired.
 """
 function street_raptor(
     net::TransitNetwork,
@@ -23,6 +68,8 @@ function street_raptor(
     destinations::AbstractVector{<:LatLon{<:Real}},
     departure_date_time::DateTime,
     time_window_length_seconds::Union{Function, Int64}=0;
+    reverse_search=false,
+    max_reverse_search_duration=SECONDS_PER_DAY,
     max_access_distance_meters=1000.0,
     max_egress_distance_meters=1000.0,
     max_rides=4,
@@ -89,6 +136,7 @@ function street_raptor(
     times_at_destinations = fill(MAX_TIME, length(destinations))
     transfers = fill(typemax(Int64), length(destinations))
 
+    # max with zero - initial offset for reverse search is 0
     initial_offset = max(convert(Int32, time_window_length_seconds), zero(Int32))
     offset_step = convert(Int32, -SECONDS_PER_MINUTE)
 
@@ -117,8 +165,9 @@ function street_raptor(
                     end
                 end
 
-                if time_window_length_seconds < 0 && time_at_dest_this_minute > departure_time
-                    # in a reverse search, see if we've found paths to everywhere within the constraint
+                if reverse_search && time_at_dest_this_minute > departure_time
+                    # in a reverse search, see if we've found paths to everywhere before the earliest
+                    # requested arrival time
                     found_path_to_all = false
                 end
 
@@ -215,20 +264,27 @@ function street_raptor(
                 end
             end
 
-            if time_window_length_seconds < 0 && found_path_to_all
-                # we've found enough paths in a reverse search
+            # search termination for reverse search: we've found paths to all destinations that arrive before the earliest
+            # requested arrival time.
+            if reverse_search && found_path_to_all
+                return nothing
+            end
+
+            # alternate search termination for reverse search: we've run past the maximum search window
+            # time_window_length_seconds is negative in this case
+            if reverse_search && offset < -abs(max_reverse_search_duration) + time_window_length_seconds
+                return nothing
+            end
+            
+            # search termination for forward search: we've searched the entire requested window
+            if !reverse_search && offset < 0
                 return nothing
             end
 
             offset += offset_step
         end
 
-        # works in both directions - if the offset has moved further than the time window length in either direction
-        if abs(initial_offset - offset) > abs(time_window_length_seconds)
-            return nothing
-        else
-            return (StopAndTime(s, departure_time + access_times[s] + offset, access_dists[s]) for s in keys(access_times)), offset
-        end
+        return (StopAndTime(s, departure_time + access_times[s] + offset, access_dists[s]) for s in keys(access_times)), offset
     end
 
     return paths
