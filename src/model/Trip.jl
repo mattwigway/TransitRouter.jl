@@ -1,4 +1,5 @@
 struct Trip
+    trip_id::String
     stop_times::Vector{StopTime}
     route::Int64
     service::Int64

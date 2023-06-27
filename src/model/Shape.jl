@@ -18,8 +18,7 @@ function geom_between(shape::Shape, net, st1, st2)
     last_stop_ll = LatLon(last_stop.stop_lat, last_stop.stop_lon)
 
     if reversed
-        # reverse them, warn if they're not close to each other
-        euclidean_distance(first_stop_ll, last_stop_ll) > 1 && @warn "Stop $(st1.stop) and $(st2.stop) are out of order on shape"
+        # reverse them, warning handled at build time
         st2, st1 = st1, st2
     end
 

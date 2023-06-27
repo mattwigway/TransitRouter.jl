@@ -1,3 +1,7 @@
+# Threshold above which we warn for out-of-order shapes
+# units are unspecified, but should be a small value consistent with rounding errors
+const SHAPE_DIST_ϵ = 1e-6
+
 function parse_shapes(shapestxt)
     df = CSV.read(shapestxt, DataFrame, types=Dict(:shape_id => String))
    
@@ -50,4 +54,17 @@ function parse_shapes(shapestxt)
     end
 
     return shapes
+end
+
+"""
+Make sure shape points are in order, warn otherwise
+"""
+function check_and_warn_for_out_of_order_shape_points(trip_id, stop_times, net)
+    for (st1, st2) in zip(stop_times[begin:end-1], stop_times[begin+1:end])
+        if st1.shape_dist_traveled - st2.shape_dist_traveled > SHAPE_DIST_ϵ
+            stopid1 = net.stops[st1.stop].stop_id
+            stopid2 = net.stops[st2.stop].stop_id
+            @warn "In trip $trip_id, stops $stopid1 and $stopid2 are out of order on shape"
+        end
+    end
 end

@@ -166,7 +166,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
                 nothing
             end
 
-            trp = Trip(Vector{StopTime}(), route, service, -1, shape)
+            trp = Trip("$gtfs_filename:$(trow.trip_id)", Vector{StopTime}(), route, service, -1, shape)
             push!(net.trips, trp)
             net.tripidx_for_id["$gtfs_filename:$(trow.trip_id)"] = length(net.trips)
         end
@@ -218,6 +218,11 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
 
     @info "Sorting stop times..."
     sort_stoptimes!(net)
+
+    for trp in net.trips
+        !isnothing(trp.shape) && check_and_warn_for_out_of_order_shape_points(trp.trip_id, trp.stop_times, net)
+    end
+
     @info "Done sorting stop times"
 
     @info "Interpolating stop times..."
@@ -226,7 +231,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
 
     @info "Finding trip patterns..."
     find_trip_patterns!(net)
-    @info "Done finding trip patterns" 
+    @info "Done finding trip patterns"
 
     if ismissing(osrm)
         @info "Finding transfers within $(max_transfer_distance_meters)m crow-flies distance..."
