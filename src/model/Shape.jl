@@ -9,9 +9,16 @@ function geom_between(shape::Shape, net, st1, st2)
     # shape_dist_traveled is always populated in stop_times, we snap during graph build
     reversed = st1.shape_dist_traveled > st2.shape_dist_traveled
 
+    # first stop location (let's hope it's on the shape...)
+    first_stop = net.stops[st1.stop]
+    first_stop_ll = LatLon(first_stop.stop_lat, first_stop.stop_lon)
+
+    # last stop location
+    last_stop = net.stops[st2.stop]
+    last_stop_ll = LatLon(last_stop.stop_lat, last_stop.stop_lon)
+
     if reversed
-        # reverse them but warn
-        @warn "Stop $(st1.stop) and $(st2.stop) are out of order on shape"
+        # reverse them, warning handled at build time
         st2, st1 = st1, st2
     end
 
@@ -29,9 +36,6 @@ function geom_between(shape::Shape, net, st1, st2)
     # make the geometry
     geom = LatLon{Float64}[]
 
-    # first stop location (let's hope it's on the shape...)
-    first_stop = net.stops[st1.stop]
-    first_stop_ll = LatLon(first_stop.stop_lat, first_stop.stop_lon)
     # avoid duplicates, don't add it if the point is in the shape
     if !(first_stop_ll ≈ shape.geom[first_offset])
         push!(geom, first_stop_ll)
@@ -43,9 +47,6 @@ function geom_between(shape::Shape, net, st1, st2)
         push!(geom, point)
     end
 
-    # last stop location
-    last_stop = net.stops[st2.stop]
-    last_stop_ll = LatLon(last_stop.stop_lat, last_stop.stop_lon)
     if !(last_stop_ll ≈ last(geom))
         push!(geom, last_stop_ll)
     end

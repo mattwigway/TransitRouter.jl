@@ -15,9 +15,9 @@ end
 
 function is_service_running(service::Service, date::Date)::Bool
     # first check calendar_dates
-    if any(service.added_dates .== date)
+    if date ∈ service.added_dates
         return true
-    elseif any(service.removed_dates .== date)
+    elseif date ∈ service.removed_dates
         return false
     else
         dow = Dates.dayofweek(date)

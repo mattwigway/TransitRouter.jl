@@ -1,7 +1,7 @@
 module TransitRouter
 
 import Dates
-import Dates: Date, Time, DateTime, Day
+import Dates: Date, Time, DateTime, Day, Second
 import Serialization: serialize, deserialize
 import ProgressBars: ProgressBar, update
 import ZipFile

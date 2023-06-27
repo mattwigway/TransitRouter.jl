@@ -83,6 +83,7 @@ function find_trip_patterns!(net::TransitNetwork)
                 @assert !found_pattern "Found multiple matching patterns (internal error)"
                 found_pattern = true
                 new_trip = Trip(
+                    trip.trip_id,
                     trip.stop_times,
                     trip.route,
                     trip.service,
@@ -101,6 +102,7 @@ function find_trip_patterns!(net::TransitNetwork)
             push!(tp_hashes[hash], (tpidx, tp))
             
             new_trip = Trip(
+                trip.trip_id,
                 trip.stop_times,
                 trip.route,
                 trip.service,

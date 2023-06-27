@@ -70,7 +70,7 @@
             test_no_updates_after_round(res, 3)
 
             # make sure that trace works with an overnight trip
-            path = trace_path(net, res, 4)
+            path, boardstop = trace_path(net, res, 4)
             @test get_routes(path) == routes
             @test get_transit_times(path) == [DateTime(2023, 5, 2, 23, 55), DateTime(2023, 5, 3, 0, 30), DateTime(2023, 5, 3, 0, 35), DateTime(2023, 5, 3, 0, 40)]
 
@@ -105,6 +105,10 @@
             @test res.transfer_prev_stop[3, :] == fill(IM, 4)
 
             test_no_updates_after_round(res, 3)
+
+            path, boardstop = trace_path(net, res, 4)
+            @test get_routes(path) == routes
+            @test get_transit_times(path) == [DateTime(2023, 5, 3, 0, 20), DateTime(2023, 5, 3, 0, 30), DateTime(2023, 5, 3, 0, 35), DateTime(2023, 5, 3, 0, 40)]
         #end
 
         #@testitem "Tuesday morning" begin
