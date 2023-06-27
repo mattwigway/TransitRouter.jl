@@ -92,7 +92,7 @@ function raptor(
     origins::Function,
     net::TransitNetwork,
     date::Date;
-    max_transfer_distance_meters=DEFAULT_MAX_LEG_WALK_DISTANCE_METERS,
+    max_transfer_distance_meters=typemax(Float64),
     max_rides=DEFAULT_MAX_RIDES
     )
     nstops = length(net.stops)
