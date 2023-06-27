@@ -145,7 +145,7 @@ function street_raptor(
     egress_geom = Dict{NTuple{2, Int64}, Vector{LatLon{Float64}}}()
 
     date = Date(departure_date_time)
-    raptor(net, date) do result::Union{Nothing, RaptorResult}, offset::Union{Nothing, Int32}
+    raptor(net, date; max_rides=max_rides) do result::Union{Nothing, RaptorResult}, offset::Union{Nothing, Int32}
         if isnothing(result)
             offset = initial_offset
         else
