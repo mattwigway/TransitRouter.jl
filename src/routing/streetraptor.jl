@@ -136,8 +136,11 @@ function street_raptor(
     times_at_destinations = fill(MAX_TIME, length(destinations))
     transfers = fill(typemax(Int64), length(destinations))
 
-    # max with zero - initial offset for reverse search is 0
-    initial_offset = max(convert(Int32, time_window_length_seconds), zero(Int32))
+    # previously reverse searches were specified with negative time window lengths. Catch old code still
+    # using that API.
+    time_window_length_seconds ≥ 0 || error("Time window length must be greater than zero (specify reverse searches like forward searches, with reverse_search=true)")
+
+    initial_offset = convert(Int32, time_window_length_seconds)
     offset_step = convert(Int32, -SECONDS_PER_MINUTE)
 
     # access and egress geometries filled in as needed
@@ -271,8 +274,7 @@ function street_raptor(
             end
 
             # alternate search termination for reverse search: we've run past the maximum search window
-            # time_window_length_seconds is negative in this case
-            if reverse_search && offset < -abs(max_reverse_search_duration) + time_window_length_seconds
+            if reverse_search && offset < -abs(max_reverse_search_duration)
                 return nothing
             end
             

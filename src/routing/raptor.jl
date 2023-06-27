@@ -109,7 +109,6 @@ function raptor(
     transfer_stop::Array{Int64,2} = fill(INT_MISSING, (nrounds - 1, nstops))
     prev_trip::Array{Int64,2} = fill(INT_MISSING, (nrounds, nstops))
     prev_boardtime::Array{Int32,2} = fill(INT_MISSING, (nrounds, nstops))
-    # set bit 0 so that offset is forced to zero and there aren't allocations later
     prev_touched_stops = falses(nstops)::BitVector
     touched_stops = falses(nstops)::BitVector
     touched_patterns = falses(length(net.patterns))::BitVector
@@ -123,8 +122,6 @@ function raptor(
 
     @debug "$(length(services_running)) services running on requested date"
 
-    # ideally this would have no allocations, although it does have a few due to empty!ing and push!ing to the bitsets - would be nice to have
-    # a bounded bitset implementation that did not dynamically resize.
     result = RaptorResult(
         times_at_stops,
         non_transfer_times_at_stops,
@@ -215,8 +212,7 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
             end
         end
 
-        # find all patterns that touch this stop
-        # optimization: mark patterns, then loop over patterns instead of stops
+        # find all patterns that were touched in the previous round
         for (services_running_this_day, stop_time_offset) in (
             (services_running[:yesterday], OFFSETS[:yesterday]), # all my problems seemed so far away 
             (services_running[:today], OFFSETS[:today]), # while the blossoms still cling to the vine
