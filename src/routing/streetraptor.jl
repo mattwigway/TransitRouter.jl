@@ -89,17 +89,21 @@ function street_raptor(
 
     access_times = Dict{Int64, Int32}()
     access_dists = Dict{Int64, Int32}()
+    access_stop_hints = Dict{Int64, String}()
+    # Where the origin got snapped
+    origin_hint = first(access.origin_waypoints).hint
 
     for stop_near_origin_idx in eachindex(stops_near_origin)
         stop_idx = stops_near_origin[stop_near_origin_idx]
         # this is the time the stop is reached
-        access_time = access.durations[1, stop_near_origin_idx]
-        dist = access.distances[1, stop_near_origin_idx]
+        access_time = access.duration_seconds[1, stop_near_origin_idx]
+        dist = access.distance_meters[1, stop_near_origin_idx]
 
         if dist <= max_access_distance_meters
-            stop = net.stops[stop_idx]
             access_times[stop_idx] = round(Int32, access_time)
             access_dists[stop_idx] = round(Int32, dist)
+            # where the destination got snapped
+            access_stop_hints[stop_idx] = access.destination_waypoints[stop_near_origin_idx].hint
         end
     end
 
@@ -114,18 +118,27 @@ function street_raptor(
     # indexed by destidx, stopidx
     egress_times = Dict{NTuple{2, Int64}, Int32}()
     egress_dists = Dict{NTuple{2, Int64}, Int32}()
+    
+    # where each destination got snapped
+    destination_hints = String[]
+
+    # where each stop got snapped for each destination
+    egress_stop_hints = Dict{NTuple{2, Int64}, String}()
 
     for destidx in eachindex(destinations)
         stops_near_destination = bbox_filter(destinations[destidx], stop_coords, max_egress_distance_meters)
         egress = distance_matrix(egress_router, stop_coords[stops_near_destination], [destinations[destidx]])
 
+        push!(destination_hints, first(egress.destination_waypoints).hint)
+
         for stop_near_dest_idx in eachindex(stops_near_destination)
-            dist = egress.distances[stop_near_dest_idx, 1]
-            time = egress.durations[stop_near_dest_idx, 1]
+            dist = egress.distance_meters[stop_near_dest_idx, 1]
+            time = egress.duration_seconds[stop_near_dest_idx, 1]
             if dist < max_egress_distance_meters
                 stopidx = stops_near_destination[stop_near_dest_idx]
                 egress_times[(destidx, stopidx)] = round(Int32, time)
                 egress_dists[(destidx, stopidx)] = round(Int32, dist)
+                egress_stop_hints[(destidx, stopidx)] = egress.origin_waypoints[stop_near_dest_idx].hint
             end
         end
     end
@@ -174,7 +187,8 @@ function street_raptor(
                     found_path_to_all = false
                 end
 
-                if egress_stop > -1
+                # don't retain reverse search trips that arrive after the end of the time window.
+                if egress_stop > -1 && (!reverse_search || time_at_dest_this_minute ≤ departure_time + time_window_length_seconds)
                     ntransfers = get_last_round(result, egress_stop)
                     if time_at_dest_this_minute < times_at_destinations[destidx] || ntransfers < transfers[destidx]
                         path, boardstop = trace_path(net, result, egress_stop)
@@ -184,7 +198,9 @@ function street_raptor(
                             egress_geom[(destidx, egress_stop)]
                         else
                             egrstop = net.stops[egress_stop]
-                            r = first(route(egress_router, LatLon(egrstop.stop_lat, egrstop.stop_lon), destinations[destidx]))
+                            r = first(route(egress_router, LatLon(egrstop.stop_lat, egrstop.stop_lon), destinations[destidx];
+                                # force OSRM to snap the same way as the distance matrix
+                                origin_hint=egress_stop_hints[(destidx, egress_stop)], destination_hint=destination_hints[destidx]))
                            
                             # route() does not always return routes consistent with distances/times from distance_matrix, because of snapping
                             # OSRM evidently requires that all of the points in a distance_matrix be snapped to the same strong component. When
@@ -202,11 +218,11 @@ function street_raptor(
                             # earlier). We use the geometry from route() since we don't have a geometry from distance_matrix. This is relatively rare,
                             # and mostly comes up around suburban stations with disconnected pedestrian networks.
                             # https://github.com/Project-OSRM/osrm-backend/issues/6629
-                            if abs(r.duration_seconds - egress_times[(destidx, egress_stop)]) > 5
+                            if abs(r.duration_seconds - egress_times[(destidx, egress_stop)]) > 60
                                 @error "Duration returned by distance_matrix ($(egress_times[(destidx, egress_stop)])) does not match that returned by route ($(r.duration_seconds)), for egress stop $(egrstop.stop_id) to destination $(destinations[destidx])"
                             end
 
-                            if abs(r.distance_meters - egress_dists[(destidx, egress_stop)]) > 5
+                            if abs(r.distance_meters - egress_dists[(destidx, egress_stop)]) > 100
                                 @error "Distance returned by distance_matrix ($(egress_dists[(destidx, egress_stop)])) does not match that returned by route ($(r.distance_meters)), for egress stop $(egrstop.stop_id) to destination $(destinations[destidx])"
                             end
 
@@ -230,14 +246,15 @@ function street_raptor(
                             access_geom[boardstop]
                         else
                             accstop = net.stops[boardstop]
-                            r = first(route(access_router, origin, LatLon(accstop.stop_lat, accstop.stop_lon)))
+                            r = first(route(access_router, origin, LatLon(accstop.stop_lat, accstop.stop_lon);
+                                origin_hint=origin_hint, destination_hint=access_stop_hints[boardstop]))
                            
                             # see comment above on egress geom
-                            if abs(r.duration_seconds - access_times[boardstop]) > 30
+                            if abs(r.duration_seconds - access_times[boardstop]) > 60
                                 @error "Duration returned by distance_matrix ($(access_times[boardstop])) does not match that returned by route ($(r.duration_seconds)), for access stop $(accstop.stop_id) from origin $(origin)"
                             end
 
-                            if abs(r.distance_meters - access_dists[boardstop]) > 30
+                            if abs(r.distance_meters - access_dists[boardstop]) > 100
                                 @error "Distance returned by distance_matrix ($(access_dists[boardstop])) does not match that returned by route ($(r.distance_meters)), for access stop $(accstop.stop_id) from origin $(origin)"
                             end
 
@@ -267,6 +284,11 @@ function street_raptor(
                 end
             end
 
+            # Increment offset
+            # do this here so the stopping criteria below are based on the offset that would otherwise be used in the _next_
+            # step
+            offset += offset_step
+
             # search termination for reverse search: we've found paths to all destinations that arrive before the earliest
             # requested arrival time.
             if reverse_search && found_path_to_all
@@ -282,8 +304,6 @@ function street_raptor(
             if !reverse_search && offset < 0
                 return nothing
             end
-
-            offset += offset_step
         end
 
         return (StopAndTime(s, departure_time + access_times[s] + offset, access_dists[s]) for s in keys(access_times)), offset
