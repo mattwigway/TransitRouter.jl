@@ -328,7 +328,7 @@ function explore_pattern!(net, result, target, tp, patidx, stop_time_offset, tou
         # do this before boarding, because you might have a situation where one path rides A->B and another rides B->C
         if current_tripidx ≠ -1 && tp.drop_off_types[stopidx] != PickupDropoffType.NotAvailable
             # see if it's (strictly) better - strict so more-transfer trips don't replace fewer-transfer trips
-            if current_trip_arrival_time::Int32 + stop_time_offset < result.non_transfer_times_at_stops_each_round[target, stop]
+            if current_trip_arrival_time::Int32 < result.non_transfer_times_at_stops_each_round[target, stop]
                 result.non_transfer_times_at_stops_each_round[target, stop] = current_trip_arrival_time::Int32
                 result.prev_stop[target, stop] = current_boardstop::Int64
                 result.prev_trip[target, stop] = current_tripidx::Int64

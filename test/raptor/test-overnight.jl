@@ -159,3 +159,59 @@
         #end
     end
 end
+
+# This is a test for issue 39, which involved double counting of stop time offsets.
+# The full description from that issue (note that the problem referenced is of course now fixed):
+
+# Sometimes the best trip is not selected in overnight routing. The issue appears to be on line 331 of raptor.jl:
+
+#  if current_trip_arrival_time::Int32 + stop_time_offset < result.non_transfer_times_at_stops_each_round[target, stop]
+
+# The issue here is that stop_time_offset has already been added to current_trip_arrival_time. For same-day trips,
+# this is a no-op, as stop_time_offset is 0, but for overnight trips this means trips from the next day are treated
+# as arriving too late, and trips from the previous day are treated as arriving too early. The times are recorded correctly
+# into non_transfer_times, though. In a case where there is a next-day trip, the first trip explored will generally be selected,
+# as even with the double stop time offset it will be less than MAX_TIME. However, any additional trips (even if they arrive
+# earlier) will have the double stop-time offset compared to the correct existing time in non-transfer times, and will almost
+# never be selected; the first trip explored will generally be chosen even if there is a better trip (the only exception, I think,
+# is trips more than 24 hours long - but even then there's no guarantee the right trip would be selected, just maybe not the first
+# one explored). For trips from the previous day, the reverse is true - the last trip explored will be selected.
+
+# This tests the issue with a simple network with two stops and two trips running in the morning, and a departure time in the
+# evening to force next-day arrival. The later trip is coded first in the GTFS. The routing engine will discover it first,
+# but should replace it with the earlier trip. The trips must be on separate patterns, as within explore_pattern only the first trip
+# will be boarded.
+@testitem "Multiple overnight routing" begin
+    include("../test-includes.jl")
+
+    gtfs = MockGTFS()
+
+    r = add_route!(gtfs)
+    svc = add_service!(gtfs, 20230101, 20231231)
+    s1, s2, s3 = [add_stop!(gtfs) for _ in 1:3]
+
+    # later trip
+    add_trip!(gtfs, r, svc, [
+        (s1, "09:00:00"),
+        (s2, "09:30:00")
+    ])
+    
+    # earlier trip
+    add_trip!(gtfs, r, svc, [
+        (s1, "08:00:00"),
+        (s2, "08:30:00"),
+        (s3, "08:40:00")
+    ])
+
+    with_gtfs(gtfs) do path
+        net::TransitNetwork = with_logger(NullLogger()) do
+            build_network([path])
+        end
+
+        res = raptor([StopAndTime(1, gt(19, 30))], net, Date(2023, 5, 2))
+
+        # we should arrive at s2 on trip 2, at 8:30
+        @test res.non_transfer_times_at_stops_each_round[2, 2] == gt(8, 30) + TransitRouter.SECONDS_PER_DAY
+        @test res.prev_trip[2, 2] == 2
+    end
+end
