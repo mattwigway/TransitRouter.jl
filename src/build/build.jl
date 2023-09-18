@@ -6,6 +6,20 @@ function strip_colnames!(df)
     rename!(strip, df)
 end
 
+function get_coltype(_, name::String)
+    if endswith(name, "_id")
+        String
+    elseif occursin("date", name)
+        String
+    elseif occursin("time", name)
+        String
+    elseif name ∈ ["route_short_name", "route_long_name"]
+        String
+    end
+end
+
+get_coltype(i, name::Symbol) = get_coltype(i, String(name))
+
 # refactor needed - split all of these load methods for individual files out into functions
 function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance, Missing}=missing; max_transfer_distance_meters::Float64=1000.0)::TransitNetwork
     # initialize a new, empty transit network
@@ -24,7 +38,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         @debug "indexed file, keys $kys"
 
         @info "..stops.txt"
-        stop_df = DataFrame(CSV.File(read(filename_map["stops.txt"]), types=Dict(:stop_id=>String)))
+        stop_df = DataFrame(CSV.File(read(filename_map["stops.txt"]), types=get_coltype))
         strip_colnames!(stop_df)
         nstops = nrow(stop_df)
 
@@ -46,7 +60,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
 
         @info "..routes.txt"
         route_df = DataFrame(CSV.File(read(filename_map["routes.txt"]);
-            types=Dict(:route_id => String, :route_short_name => String, :route_long_name => String)))
+            types=get_coltype))
         strip_colnames!(route_df)
         nroutes = nrow(route_df)
 
@@ -63,7 +77,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         if haskey(filename_map, "calendar.txt")
             @info "..calendar.txt"
 
-            cal_df = DataFrame(CSV.File(read(filename_map["calendar.txt"])))
+            cal_df = DataFrame(CSV.File(read(filename_map["calendar.txt"]), types=get_coltype))
             strip_colnames!(cal_df)
             ncals = nrow(cal_df)
 
@@ -96,7 +110,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         if haskey(filename_map, "calendar_dates.txt")
             @info "..calendar_dates.txt"
 
-            cal_df = DataFrame(CSV.File(read(filename_map["calendar_dates.txt"])))
+            cal_df = DataFrame(CSV.File(read(filename_map["calendar_dates.txt"]), types=get_coltype))
             strip_colnames!(cal_df)
             ncals = nrow(cal_df)
 
@@ -145,7 +159,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
         end
 
         @info "..trips.txt"
-        trip_df = DataFrame(CSV.File(filename_map["trips.txt"], types=Dict(:shape_id => String), validate=false))
+        trip_df = DataFrame(CSV.File(filename_map["trips.txt"], types=get_coltype, validate=false))
         strip_colnames!(trip_df)
         ntrips = nrow(trip_df)
 
@@ -175,7 +189,7 @@ function build_network(gtfs_filenames::Vector{String}, osrm::Union{OSRMInstance,
 
         @info "..stop_times.txt"
 
-        st_df = DataFrame(CSV.File(filename_map["stop_times.txt"], typemap=Dict(Dates.Time=>String)))
+        st_df = DataFrame(CSV.File(filename_map["stop_times.txt"], types=get_coltype))
         strip_colnames!(st_df)
         nst = nrow(st_df)
 
