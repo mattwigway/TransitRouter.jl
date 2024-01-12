@@ -92,7 +92,7 @@ function raptor(
     origins::Function,
     net::TransitNetwork,
     date::Date;
-    max_transfer_distance_meters=typemax(Float64),
+    max_transfer_distance_meters=nothing,
     max_rides=DEFAULT_MAX_RIDES
     )
     nstops = length(net.stops)
@@ -275,7 +275,7 @@ function run_raptor!(net::TransitNetwork, result, max_transfer_distance_meters, 
                 end
 
                 for xfer in net.transfers[stop]
-                    if xfer.distance_meters <= max_transfer_distance_meters
+                    if isnothing(max_transfer_distance_meters) || xfer.distance_meters <= max_transfer_distance_meters
                         pre_xfer_time = non_transfer_times_at_stops[target, stop]
                         time_after_xfer = pre_xfer_time + round(Int32, xfer.duration_seconds)
                         dist_after_xfer = non_transfer_walk_distance_meters[target, stop] + round(Int32, xfer.distance_meters)
