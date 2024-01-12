@@ -24,9 +24,8 @@ end
         max_reverse_search_duration=SECONDS_PER_DAY,
         max_access_distance_meters=1000.0,
         max_egress_distance_meters=1000.0,
-        max_rides=4,
-        stop_to_destination_distances=nothing,
-        stop_to_destination_durations=nothing
+        max_transfer_distance_meters=nothing,
+        max_rides=4
     )
 
 Perform street and transit routing, departing at or arriving by all of the times in the time window, and return
@@ -59,6 +58,10 @@ are two destinations, one nearby and one far away, there may be multiple trips t
 of the time window. For instance, if the time window is 8:00-10:00, and to get the further destination by 8 requires leaving at 6:30, we
 will also find all optimal trips to the nearer destination that leave at or after 6:30. This may mean, for example, that we find both 6:40-6:55
 and a 7:40-7:55 trip. A simple postprocessing step can remove these trips if desired.
+
+Tha maximum transfer distance specified is an upper bound; it is binding iff it is lower than the maximum transfer distance specified
+when building the graph. If it is `nothing`, all transfers less than the maximum transfer distance specified at graph build time
+will be used.
 """
 function street_raptor(
     net::TransitNetwork,
@@ -70,11 +73,10 @@ function street_raptor(
     time_window_length_seconds::Union{Function, Int64}=0;
     reverse_search=false,
     max_reverse_search_duration=SECONDS_PER_DAY,
+    max_transfer_distance_meters=nothing,
     max_access_distance_meters=1000.0,
     max_egress_distance_meters=1000.0,
-    max_rides=4,
-    stop_to_destination_distances=nothing,
-    stop_to_destination_durations=nothing
+    max_rides=4
     )
 
     @debug "performing access search"
@@ -161,7 +163,7 @@ function street_raptor(
     egress_geom = Dict{NTuple{2, Int64}, Vector{LatLon{Float64}}}()
 
     date = Date(departure_date_time)
-    raptor(net, date; max_rides=max_rides) do result::Union{Nothing, RaptorResult}, offset::Union{Nothing, Int32}
+    raptor(net, date; max_rides=max_rides, max_transfer_distance_meters=max_transfer_distance_meters) do result::Union{Nothing, RaptorResult}, offset::Union{Nothing, Int32}
         if isnothing(result)
             offset = initial_offset
         else
